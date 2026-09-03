@@ -79,6 +79,27 @@ export function buildAdjacencyGraph(
   return { neighbors };
 }
 
+/**
+ * 束の中で「連棟移設が効く」軒と、その根拠になった最も近い束内の隣家。
+ * 束の外にいる隣家は数えない。n = 1 は必ず空。
+ */
+export function relocationPartners(
+  bundleIds: ReadonlySet<string>,
+  graph: AdjacencyGraph,
+  maxGapMeters: number,
+): Map<string, string> {
+  const partners = new Map<string, string>();
+  for (const id of bundleIds) {
+    for (const n of graph.neighbors[id] ?? []) {
+      if (n.gapMeters <= maxGapMeters && bundleIds.has(n.buildingId)) {
+        partners.set(id, n.buildingId); // neighbors は近い順なので最初の一致が最も近い
+        break;
+      }
+    }
+  }
+  return partners;
+}
+
 /** 束の中で「連棟移設が効く」軒を判定する。 */
 export function relocationEligible(
   bundleIds: ReadonlySet<string>,

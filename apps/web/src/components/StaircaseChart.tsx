@@ -44,7 +44,7 @@ export function StaircaseChart({ staircase, currentSize, thresholdSize, width = 
         return (
           <g key={s.size}>
             <rect x={x(i) + 1} y={y(s.perHouseAverage)} width={Math.max(2, bw - 2)} height={pad.t + h - y(s.perHouseAverage)} fill={fill} rx={2} />
-            {s.truckAdded && <text x={x(i) + bw / 2} y={y(s.perHouseAverage) - 4} fontSize={11} textAnchor="middle">🚚</text>}
+            {s.deltaFromPrevious > 0 && <text x={x(i) + bw / 2} y={y(s.perHouseAverage) - 4} fontSize={11} textAnchor="middle">{s.truckAdded ? '🚚' : '👷'}</text>}
             {(i === 0 || i === steps.length - 1 || s.size % 4 === 0 || isCurrent || isThreshold) && (
               <text x={x(i) + bw / 2} y={height - pad.b + 14} fontSize={11} textAnchor="middle" fill="#52606d">{s.size}</text>
             )}
@@ -61,7 +61,7 @@ export function StaircaseChart({ staircase, currentSize, thresholdSize, width = 
           </g>
         );
       })()}
-      <text x={pad.l + w / 2} y={height - 2} fontSize={11} textAnchor="middle" fill="#52606d">束の軒数(🚚 = 車両が 1 台増えて少し戻る段)</text>
+      <text x={pad.l + w / 2} y={height - 2} fontSize={11} textAnchor="middle" fill="#52606d">束の軒数(🚚 = 車両が 1 台増えて戻る段、👷 = 班の出動日が増えて戻る段)</text>
     </svg>
   );
 }

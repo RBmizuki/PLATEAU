@@ -96,7 +96,10 @@ export function QuoteStep(props: QuoteStepProps) {
   const q = data.quote;
   const registeredOthers = q.current.size - 1;
   const remaining = Math.max(0, q.threshold - q.current.size);
-  const nextTruckStep = q.staircase.steps.find((s) => s.size > q.threshold && s.truckAdded);
+  // 「正直に戻る段」は単価が上がる段(理由は車両 or 班日の増加)。閾値の次にある最初の段を説明に使う。
+  const nextUpStep = q.staircase.steps.find((s) => s.size > q.threshold && s.deltaFromPrevious > 0);
+  const upReason = (s: { truckAdded: boolean; crewDayAdded?: boolean; trucks: number; crewDays: number }) =>
+    [s.truckAdded ? `トラックが ${s.trucks} 台目に増え` : '', s.crewDayAdded ? `班の出動が ${s.crewDays} 日目に増え` : ''].filter(Boolean).join('、');
 
   return (
     <>
@@ -115,7 +118,7 @@ export function QuoteStep(props: QuoteStepProps) {
         <StaircaseChart staircase={q.staircase} currentSize={q.current.size} thresholdSize={q.threshold} />
         <p className="note">
           この街区に入れる車: <strong>{vehicleLabel[q.vehicleClass]}</strong>({q.vehicleReason})。
-          {nextTruckStep && <> {nextTruckStep.size} 軒目でトラックが {nextTruckStep.trucks} 台目に増え、1 軒あたり {yen(nextTruckStep.deltaFromPrevious)} 戻ります。</>}
+          {nextUpStep && <> {nextUpStep.size} 軒目で{upReason(nextUpStep)}、1 軒あたり {yenFull(nextUpStep.deltaFromPrevious)} だけ正直に戻ります。</>}
         </p>
         <button className="secondary" onClick={() => setShowBreakdown((v) => !v)} style={{ fontSize: 15, padding: '8px 12px' }}>
           {showBreakdown ? '内訳を閉じる' : 'あなたの家の内訳(なぜ束だと安いか)'}

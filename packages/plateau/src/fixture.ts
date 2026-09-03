@@ -98,11 +98,11 @@ export const DEFAULT_ROADS: FixtureRoadSpec[] = [
   { id: 'road-main-m', rect: [0, 44, 260, 6], width: 6, numberOfLanes: 2, widthType: '3' },
   { id: 'road-main-n', rect: [0, 88, 260, 6], width: 6, numberOfLanes: 2, widthType: '3' },
   { id: 'road-main-nn', rect: [0, 132, 260, 6], width: 6, numberOfLanes: 2, widthType: '3' },
-  // 南北の区画道路(幅 4.5m)
+  // 南北の区画道路(都市部ブロック A〜D の間は幅 4.5m = 2t 止まり、郊外型ブロック E・F の脇は幅 6m = 4t 可)
   { id: 'road-x-0', rect: [0, 0, 6, 140], width: 4.5, numberOfLanes: 1, widthType: '2' },
   { id: 'road-x-1', rect: [80, 0, 6, 140], width: 4.5, numberOfLanes: 1, widthType: '2' },
-  { id: 'road-x-2', rect: [168, 0, 6, 140], width: 4.5, numberOfLanes: 1, widthType: '2' },
-  { id: 'road-x-3', rect: [254, 0, 6, 140], width: 4.5, numberOfLanes: 1, widthType: '2' },
+  { id: 'road-x-2', rect: [168, 0, 6, 140], width: 6, numberOfLanes: 2, widthType: '3' },
+  { id: 'road-x-3', rect: [254, 0, 6, 140], width: 6, numberOfLanes: 2, widthType: '3' },
   // ブロック D の前の路地(幅 3m: 軽トラのみ)
   { id: 'road-alley-d', rect: [86, 50, 82, 3], width: 3, numberOfLanes: 1, widthType: '2' },
 ];

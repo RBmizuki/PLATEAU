@@ -94,7 +94,7 @@ describe('quote', () => {
     expect(j.quote.atThreshold.size).toBe(12);
     expect(j.quote.atThreshold.perHouseAverage).toBeLessThan(j.quote.single * 0.75);
     expect(j.quote.staircase.steps).toHaveLength(cluster.candidateCount);
-    expect(j.quote.vehicleClass).toBe('4t');
+    expect(j.quote.vehicleClass).toBe('2t');
     expect(j.quote.order[0]!.self).toBe(true);
   });
 
@@ -114,11 +114,22 @@ describe('quote', () => {
     expect(lead.lead.notes.length).toBeGreaterThan(0);
   });
 
-  it('alley block is limited to a kei truck', async () => {
+  it('alley block is limited to a kei truck; suburban block can take a 4t', async () => {
     const alley = ds.clusters.find((c) => c.buildingIds[0]!.startsWith('bldg-D-'))!;
     const r = await app3.request(`/api/quote?clusterId=${alley.id}&buildingId=${alley.buildingIds[0]}&installYear=2013`);
     const j = (await r.json()) as { quote: { vehicleClass: string; roadWidth: number } };
-    expect(j.quote.vehicleClass).toBe('2t');
+    expect(j.quote.vehicleClass).toBe('kei');
     expect(j.quote.roadWidth).toBe(3);
+    const sub = ds.clusters.find((c) => c.buildingIds[0]!.startsWith('bldg-E-'))!;
+    const r2 = await app3.request(`/api/quote?clusterId=${sub.id}&buildingId=${sub.buildingIds[0]}&installYear=2013`);
+    const j2 = (await r2.json()) as { quote: { vehicleClass: string; roadWidth: number; staircase: { steps: Array<{ size: number; perHouseAverage: number }> }; single: number } };
+    expect(j2.quote.vehicleClass).toBe('4t');
+    expect(j2.quote.roadWidth).toBe(6);
+    // 郊外(移設なし)は都市部より削減が小さい
+    const a = ds.clusters.find((c) => c.buildingIds[0]!.startsWith('bldg-A-'))!;
+    const ra = await app3.request(`/api/quote?clusterId=${a.id}&buildingId=${a.buildingIds[0]}&installYear=2013`);
+    const ja = (await ra.json()) as { quote: { staircase: { steps: Array<{ size: number; savingsRate: number }> } } };
+    const je = j2.quote.staircase.steps[9]!;
+    expect(1 - je.perHouseAverage / j2.quote.single).toBeLessThan(ja.quote.staircase.steps[9]!.savingsRate);
   });
 });

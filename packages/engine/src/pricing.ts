@@ -19,7 +19,7 @@ import type {
   StaircaseStep,
   VehicleClass,
 } from './types.js';
-import { relocationEligible } from './adjacency.js';
+import { relocationPartners } from './adjacency.js';
 import { wallAreaSqm } from './normalize.js';
 
 const VEHICLE_ORDER: VehicleClass[] = ['kei', '2t', '4t'];
@@ -58,22 +58,25 @@ export function crewDaysFor(houses: number, rt: RateTable): number {
   return Math.max(1, Math.ceil(houses / Math.max(1, rt.labor.housesPerCrewDay)));
 }
 
+export type SharedCostAllocation = 'equal' | 'panels' | 'hybrid';
+
 export interface QuoteOptions {
   /**
-   * 束レベル固定費(足場搬入・車両・班日)の配分。
-   * equal: 軒数で等分(招待状の「1 軒 19 万円」に一致)。
-   * panels: パネル枚数比で配分(大きな設備ほど多く負担)。
+   * 束レベル固定費の配分(docs/pricing-model.md §1.3)。
+   * hybrid(既定): 車両・運搬は枚数比(台数は枚数で決まる)、足場搬入・班出動は均等(軒数で決まる)。
+   * equal: すべて均等。 panels: すべて枚数比。
+   * bundleTotal と perHouseAverage は配賦則に依らず同一。変わるのは perHouse[i] だけ。
    */
-  sharedCostAllocation?: 'equal' | 'panels';
+  sharedCostAllocation?: SharedCostAllocation;
 }
 
 /** 束(1 軒以上)の見積。 */
 export function quoteBundle(members: readonly BundleMember[], site: SiteContext, rt: RateTable, options: QuoteOptions = {}): BundleQuote {
   if (members.length === 0) throw new Error('quoteBundle: empty bundle');
-  const allocation = options.sharedCostAllocation ?? 'equal';
+  const allocation = options.sharedCostAllocation ?? 'hybrid';
   const n = members.length;
   const ids = new Set(members.map((m) => m.building.id));
-  const relocated = relocationEligible(ids, site.adjacency, rt.scaffold.relocationMaxGapMeters);
+  const partners = relocationPartners(ids, site.adjacency, rt.scaffold.relocationMaxGapMeters);
 
   const panels = members.map((m) => panelsFor(m.installation.capacityKw, rt));
   const totalPanels = panels.reduce((s, p) => s + p, 0);
@@ -86,25 +89,32 @@ export function quoteBundle(members: readonly BundleMember[], site: SiteContext,
   const sharedTransport = vehicle.trucks * rt.disposal.transportPerTrip;
   const sharedCrew = crewDays * rt.labor.crewMobilizationPerDay;
 
-  const share = (i: number) => (allocation === 'panels' ? panels[i]! / totalPanels : 1 / n);
+  const byPanels = (i: number) => panels[i]! / totalPanels;
+  const equal = () => 1 / n;
+  // 車両・運搬(台数は枚数で決まる)/ 足場搬入・班出動(軒数で決まる)
+  const shareV = allocation === 'equal' ? equal : byPanels;
+  const shareS = allocation === 'panels' ? byPanels : equal;
 
   const perHouse: HouseBreakdown[] = members.map((m, i) => {
     const wall = wallAreaSqm(m.building, rt.scaffold.storeyHeightMeters);
-    const isRelocated = relocated.has(m.building.id);
+    const partner = partners.get(m.building.id);
+    const isRelocated = partner !== undefined;
+    // 最低額は移設係数を掛ける前に適用する
     const setup = Math.max(rt.scaffold.minimumPerHouse, wall * rt.scaffold.perWallSqm) * (isRelocated ? rt.scaffold.relocationFactor : 1);
-    const scaffold = setup + sharedScaffold * share(i);
-    const vehicleCost = sharedVehicle * share(i);
-    const disposal = panels[i]! * rt.disposal.perPanel + sharedTransport * share(i);
+    const scaffold = setup + sharedScaffold * shareS(i);
+    const vehicleCost = sharedVehicle * shareV(i);
+    const disposal = panels[i]! * rt.disposal.perPanel + sharedTransport * shareV(i);
     const electrical = rt.labor.electricalPerHouse;
     const removal = panels[i]! * rt.labor.removalPerPanel;
     const roofRepair = rt.labor.roofRepairPerHouse;
-    const crew = sharedCrew * share(i);
+    const crew = sharedCrew * shareS(i);
     const total = scaffold + vehicleCost + disposal + electrical + removal + roofRepair + crew;
     return {
       buildingId: m.building.id,
       panels: panels[i]!,
       wallAreaSqm: round(wall, 1),
       scaffoldRelocated: isRelocated,
+      relocationNeighborId: partner,
       scaffold: round0(scaffold),
       vehicle: round0(vehicleCost),
       disposal: round0(disposal),
@@ -131,7 +141,7 @@ export function quoteBundle(members: readonly BundleMember[], site: SiteContext,
     vehicleClass: vehicle.vehicleClass,
     trucks: vehicle.trucks,
     crewDays,
-    relocatedHouses: relocated.size,
+    relocatedHouses: partners.size,
     totalPanels,
     bundleTotal,
     perHouseAverage: Math.round(bundleTotal / n),
@@ -172,11 +182,15 @@ export function buildStaircase(candidates: readonly BundleMember[], site: SiteCo
       crewDays: q.crewDays,
       deltaFromPrevious: prev ? q.perHouseAverage - prev.perHouseAverage : 0,
       truckAdded: prev ? q.trucks > prev.trucks : false,
+      crewDayAdded: prev ? q.crewDays > prev.crewDays : false,
+      vehicleClass: q.vehicleClass,
       savingsRate: single > 0 ? round((single - q.perHouseAverage) / single, 4) : 0,
     });
     prev = q;
   }
-  const best = steps.reduce((b, s) => (s.perHouseAverage < b.perHouseAverage ? s : b), steps[0]!);
+  // 最も安い段(同額なら小さい n)
+  let best = steps[0]!;
+  for (const st of steps) if (st.perHouseAverage < best.perHouseAverage) best = st;
   return { rateTableId: rt.id, vehicleClass: site.vehicleClass, singlePrice: single, steps, best };
 }
 

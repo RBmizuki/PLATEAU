@@ -957,17 +957,17 @@
 <core:cityObjectMember><tran:Road gml:id="road-x-2">
 <tran:lod1MultiSurface><gml:MultiSurface><gml:surfaceMember><gml:Polygon><gml:exterior><gml:LinearRing><gml:posList>35.63950000 140.04735698 0.00 35.63950000 140.04742331 0.00 35.64075764 140.04742331 0.00 35.64075764 140.04735698 0.00 35.63950000 140.04735698 0.00</gml:posList></gml:LinearRing></gml:exterior></gml:Polygon></gml:surfaceMember></gml:MultiSurface></tran:lod1MultiSurface>
 <uro:roadStructureAttribute><uro:RoadStructureAttribute>
-<uro:widthType codeSpace="../../codelists/RoadStructureAttribute_widthType.xml">2</uro:widthType>
-<uro:width uom="m">4.5</uro:width>
-<uro:numberOfLanes>1</uro:numberOfLanes>
+<uro:widthType codeSpace="../../codelists/RoadStructureAttribute_widthType.xml">3</uro:widthType>
+<uro:width uom="m">6.0</uro:width>
+<uro:numberOfLanes>2</uro:numberOfLanes>
 </uro:RoadStructureAttribute></uro:roadStructureAttribute>
 </tran:Road></core:cityObjectMember>
 <core:cityObjectMember><tran:Road gml:id="road-x-3">
 <tran:lod1MultiSurface><gml:MultiSurface><gml:surfaceMember><gml:Polygon><gml:exterior><gml:LinearRing><gml:posList>35.63950000 140.04830758 0.00 35.63950000 140.04837390 0.00 35.64075764 140.04837390 0.00 35.64075764 140.04830758 0.00 35.63950000 140.04830758 0.00</gml:posList></gml:LinearRing></gml:exterior></gml:Polygon></gml:surfaceMember></gml:MultiSurface></tran:lod1MultiSurface>
 <uro:roadStructureAttribute><uro:RoadStructureAttribute>
-<uro:widthType codeSpace="../../codelists/RoadStructureAttribute_widthType.xml">2</uro:widthType>
-<uro:width uom="m">4.5</uro:width>
-<uro:numberOfLanes>1</uro:numberOfLanes>
+<uro:widthType codeSpace="../../codelists/RoadStructureAttribute_widthType.xml">3</uro:widthType>
+<uro:width uom="m">6.0</uro:width>
+<uro:numberOfLanes>2</uro:numberOfLanes>
 </uro:RoadStructureAttribute></uro:roadStructureAttribute>
 </tran:Road></core:cityObjectMember>
 <core:cityObjectMember><tran:Road gml:id="road-alley-d">

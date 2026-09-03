@@ -90,9 +90,17 @@ export interface YearCluster {
   candidateCount: number;
 }
 
+/** 単価表の各値の出所。キーは 'vehicle.dayCost.2t' のようなドット区切りのフィールドパス。 */
+export interface RateProvenance {
+  label: '公表相場' | '仮定' | '報告書アンカーから逆算' | '事業者値';
+  source: string;
+  /** 参考レンジ(あれば)。 */
+  range?: [number, number];
+}
+
 /**
  * 単価表。公表相場の概算で駆動し、事業者値に差し替え可能。
- * 金額はすべて円(税抜)。
+ * 金額はすべて円(税抜)。既定値と導出は docs/pricing-model.md §2。
  */
 export interface RateTable {
   /** 単価表の識別子(例: "public-2026-estimate" / 事業者名)。 */
@@ -153,6 +161,8 @@ export interface RateTable {
   defaultCapacityKw: number;
   /** 事業者への成約手数料率(0〜1)。リード価値の算出用。 */
   leadFeeRate: number;
+  /** 各値の出所(「なぜ束だと安いか」の 1 枚に印字する)。 */
+  provenance?: Record<string, RateProvenance>;
 }
 
 /** 束(共同撤去枠)に入る 1 軒の入力。 */
@@ -163,7 +173,7 @@ export interface BundleMember {
 
 /** 束を評価するための街区条件。 */
 export interface SiteContext {
-  /** 街区に入れる車格(道路幅員・斜面から判定済み)。 */
+  /** 街区に入れる車格の上限(道路幅員・斜面から判定済み)。エンジンはこの上限以下で最安の車格を実配車にする。 */
   vehicleClass: VehicleClass;
   /** 車格判定の根拠。 */
   vehicleReason: string;
@@ -178,6 +188,8 @@ export interface HouseBreakdown {
   wallAreaSqm: number;
   /** この軒は連棟移設の恩恵を受けたか。 */
   scaffoldRelocated: boolean;
+  /** 移設判定の根拠になった束内の隣家(最も近い 1 軒)。 */
+  relocationNeighborId?: string;
   scaffold: number;
   vehicle: number;
   disposal: number;
@@ -191,6 +203,7 @@ export interface HouseBreakdown {
 /** 束サイズ n の評価結果。 */
 export interface BundleQuote {
   size: number;
+  /** 実配車の車格(街区の上限以下で 台数×(日額+運搬) が最小のもの)。 */
   vehicleClass: VehicleClass;
   trucks: number;
   crewDays: number;
@@ -222,14 +235,19 @@ export interface StaircaseStep {
   crewDays: number;
   /** 直前の段からの差分(負なら安くなった)。 */
   deltaFromPrevious: number;
-  /** 直前の段から車両が増えたか(正直に戻る段)。 */
+  /** 直前の段から車両が増えたか(正直に戻る段の主因)。 */
   truckAdded: boolean;
+  /** 直前の段から班の出動日が増えたか(降り方が鈍る・戻る段のもう一つの理由)。 */
+  crewDayAdded?: boolean;
+  /** この段の実配車の車格(郊外では台数据え置きで 2t → 4t に切り替わる段がある)。 */
+  vehicleClass?: VehicleClass;
   /** 単独価格に対する削減率(0〜1)。 */
   savingsRate: number;
 }
 
 export interface Staircase {
   rateTableId: string;
+  /** 街区に入れる車格の上限(段ごとの実配車は StaircaseStep.vehicleClass)。 */
   vehicleClass: VehicleClass;
   singlePrice: number;
   steps: StaircaseStep[];
