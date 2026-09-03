@@ -22,8 +22,8 @@ a { color: inherit; }
 .app-header nav { margin-left: auto; display: flex; gap: 14px; font-size: 15px; }
 .app-header nav a { text-decoration: none; padding: 6px 10px; border-radius: 8px; }
 .app-header nav a.active { background: var(--accent-soft); color: var(--accent); }
-.layout { display: grid; grid-template-columns: minmax(360px, 480px) 1fr; gap: 0; min-height: calc(100vh - 62px); }
-.layout .panel { background: var(--paper); border-right: 1px solid var(--line); padding: 20px 22px; overflow-y: auto; }
+.layout { display: grid; grid-template-columns: minmax(360px, 480px) 1fr; gap: 0; height: calc(100vh - 62px); }
+.layout .panel { background: var(--paper); border-right: 1px solid var(--line); padding: 20px 22px; overflow-y: auto; min-height: 0; }
 .layout .stage { position: relative; }
 .city-map { width: 100%; }
 .step { border: 1px solid var(--line); border-radius: 14px; padding: 16px 18px; margin-bottom: 14px; background: var(--paper); }
@@ -52,7 +52,7 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 .money small { font-size: 14px; font-weight: 400; color: var(--muted); margin-left: 6px; }
 .note { font-size: 14px; color: var(--muted); }
 .pill { display: inline-block; padding: 2px 8px; border-radius: 6px; background: #eef2f5; font-size: 13px; color: var(--muted); }
-@media (max-width: 900px) { .layout { grid-template-columns: 1fr; } .layout .panel { border-right: 0; border-bottom: 1px solid var(--line); } }
+@media (max-width: 900px) { .layout { grid-template-columns: 1fr; grid-template-rows: 1fr 45vh; } .layout .panel { border-right: 0; border-bottom: 1px solid var(--line); } .layout .stage .city-map { height: 45vh !important; } }
 @media print {
   .app-header, .layout .panel, .no-print { display: none !important; }
   body { background: #fff; }
