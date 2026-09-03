@@ -1,0 +1,8 @@
+node_modules/
+dist/
+*.tsbuildinfo
+.DS_Store
+apps/api/data/*.json
+!apps/api/data/.gitkeep
+coverage/
+.vite/
