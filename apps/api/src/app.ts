@@ -1,15 +1,30 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { clustersForInstallYear } from '@ashiba/engine';
+import { resolve } from 'node:path';
 import { loadDataset, type Dataset } from './dataset.js';
 import { gsiGeocode, matchAddress, nearestBuilding } from './geocode.js';
+import { BundleStore } from './store.js';
+import { bundleRoutes } from './routes/bundles.js';
+import { demoRoutes } from './routes/demo.js';
 
 export interface AppOptions {
   dataset?: Dataset;
+  store?: BundleStore;
+  now?: () => Date;
+  /** 束の成立閾値(既定 12 軒)。 */
+  threshold?: number;
+  demo?: boolean;
 }
+
+export const DEFAULT_STORE_FILE = resolve(process.cwd(), 'data/bundles.json');
 
 export function createApp(options: AppOptions = {}): Hono {
   const ds = options.dataset ?? loadDataset();
+  const store = options.store ?? new BundleStore(process.env['STORE_FILE'] ?? DEFAULT_STORE_FILE);
+  const now = options.now ?? (() => new Date());
+  const threshold = options.threshold ?? Number(process.env['BUNDLE_THRESHOLD'] ?? 12);
+  const demo = options.demo ?? process.env['DEMO'] !== '0';
   const app = new Hono();
   app.use('/api/*', cors());
 
@@ -65,6 +80,9 @@ export function createApp(options: AppOptions = {}): Hono {
     }
     return c.json({ query: q, hits: [] });
   });
+
+  app.route('/api/bundles', bundleRoutes({ ds, store, defaultThreshold: threshold, now }));
+  if (demo) app.route('/api/demo', demoRoutes(ds, store, now, threshold));
 
   return app;
 }
