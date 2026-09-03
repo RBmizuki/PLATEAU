@@ -1,5 +1,5 @@
-import type { AdjacencyGraph, Building, LngLat, YearCluster } from './types.js';
-import { haversineMeters } from './geometry.js';
+import type { AdjacencyGraph, Building, LngLat, Road, YearCluster } from './types.js';
+import { bbox, haversineMeters, localProjector, segmentsIntersect, type BBox, type XY } from './geometry.js';
 
 export interface ClusterOptions {
   /** 同じクラスタとみなす築年差の上限(年)。 */
@@ -10,6 +10,49 @@ export interface ClusterOptions {
   minSize?: number;
   /** 住宅用途コードのみを対象にする場合に指定(未指定なら全件)。 */
   residentialUsageCodes?: readonly string[];
+  /**
+   * 街区の境界として使う道路(PLATEAU tran:Road の LOD1 面)。
+   * 2 棟の重心を結ぶ線分が道路面の辺を横切る場合は連結しない = 道路で区切られた区画を街区とする。
+   */
+  roadBarriers?: readonly Road[];
+}
+
+interface Barrier {
+  ring: XY[];
+  box: BBox;
+}
+
+function buildBarriers(roads: readonly Road[], toXY: (p: LngLat) => XY): Barrier[] {
+  const out: Barrier[] = [];
+  for (const r of roads) {
+    for (const poly of r.polygons) {
+      const ring = poly.map(toXY);
+      if (ring.length < 4) continue;
+      out.push({ ring, box: bbox(ring) });
+    }
+  }
+  return out;
+}
+
+function segmentBox(a: XY, b: XY): BBox {
+  return { minX: Math.min(a[0], b[0]), minY: Math.min(a[1], b[1]), maxX: Math.max(a[0], b[0]), maxY: Math.max(a[1], b[1]) };
+}
+
+function boxesOverlap(a: BBox, b: BBox): boolean {
+  return a.minX <= b.maxX && b.minX <= a.maxX && a.minY <= b.maxY && b.minY <= a.maxY;
+}
+
+/** 線分 a-b が道路面の辺を横切るか。 */
+export function crossesBarrier(a: XY, b: XY, barriers: readonly Barrier[]): boolean {
+  const sb = segmentBox(a, b);
+  for (const br of barriers) {
+    if (!boxesOverlap(sb, br.box)) continue;
+    const r = br.ring;
+    for (let i = 0; i < r.length - 1; i++) {
+      if (segmentsIntersect(a, b, r[i]!, r[i + 1]!)) return true;
+    }
+  }
+  return false;
 }
 
 class UnionFind {
@@ -47,6 +90,10 @@ export function detectYearClusters(
   const minSize = options.minSize ?? 3;
   const usageSet = options.residentialUsageCodes ? new Set(options.residentialUsageCodes) : null;
 
+  const projector = buildings.length > 0 ? localProjector(buildings[0]!.centroid) : undefined;
+  const barriers = options.roadBarriers && projector ? buildBarriers(options.roadBarriers, projector.toXY) : [];
+  const xy: XY[] = projector ? buildings.map((b) => projector.toXY(b.centroid)) : [];
+
   const index = new Map<string, number>();
   const eligible: number[] = [];
   buildings.forEach((b, i) => {
@@ -65,7 +112,9 @@ export function detectYearClusters(
       const j = index.get(n.buildingId);
       if (j === undefined || !eligibleSet.has(j)) continue;
       const other = buildings[j]!;
-      if (Math.abs(other.yearOfConstruction! - b.yearOfConstruction!) <= yearWindow) uf.union(i, j);
+      if (Math.abs(other.yearOfConstruction! - b.yearOfConstruction!) > yearWindow) continue;
+      if (barriers.length > 0 && crossesBarrier(xy[i]!, xy[j]!, barriers)) continue;
+      uf.union(i, j);
     }
   }
 

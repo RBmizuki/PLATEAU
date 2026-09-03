@@ -61,3 +61,23 @@ describe('adjacency + clusters', () => {
     expect(clustersForInstallYear(clusters, 2005, far.centroid)).toHaveLength(0);
   });
 });
+
+describe('road barriers split clusters into street blocks', () => {
+  it('does not link houses across a road polygon', () => {
+    // 2 軒が 10m 離れて並び、その間に幅 4m の道路がある
+    const a = house('a', 0, 0, 2013);
+    const b = house('b', 18, 0, 2013);
+    const c = house('c', 27.2, 0, 2013);
+    const road = {
+      id: 'r',
+      polygons: [[toLngLat([10, -50]), toLngLat([14, -50]), toLngLat([14, 50]), toLngLat([10, 50]), toLngLat([10, -50])] as LngLat[]],
+      width: 4,
+    };
+    const graph = buildAdjacencyGraph([a, b, c], { maxGapMeters: 30 });
+    const without = detectYearClusters([a, b, c], graph, { yearWindow: 2, minSize: 2 });
+    expect(without).toHaveLength(1);
+    const withRoad = detectYearClusters([a, b, c], graph, { yearWindow: 2, minSize: 2, roadBarriers: [road] });
+    expect(withRoad).toHaveLength(1);
+    expect(withRoad[0]!.buildingIds).toEqual(['b', 'c']);
+  });
+});

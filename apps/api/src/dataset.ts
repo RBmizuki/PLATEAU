@@ -41,8 +41,10 @@ export function loadDataset(file = process.env['DATA_FILE'] ?? DEFAULT_DATA_FILE
   // 取り込み元によっては派生値が無いことがあるので再計算する
   const buildings = raw.buildings.map((b) => normalizeBuilding(b));
   const roads = raw.roads ?? [];
+  // 連棟移設の判定用(外壁間 12m まで)と、街区連結用(背中合わせ・道路越しを含む 35m まで)は別のグラフ
   const adjacency = buildAdjacencyGraph(buildings, { maxGapMeters: 12 });
-  const clusters = detectYearClusters(buildings, adjacency, { yearWindow: 2, linkGapMeters: 30, minSize: 3 });
+  const clusterGraph = buildAdjacencyGraph(buildings, { maxGapMeters: 35, maxNeighbors: 24 });
+  const clusters = detectYearClusters(buildings, clusterGraph, { yearWindow: 2, linkGapMeters: 35, minSize: 3, roadBarriers: roads });
   const clusterOfBuilding = new Map<string, string>();
   for (const c of clusters) for (const id of c.buildingIds) clusterOfBuilding.set(id, c.id);
   let minLon = Infinity;

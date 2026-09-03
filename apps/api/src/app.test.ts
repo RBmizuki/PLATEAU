@@ -12,7 +12,7 @@ describe('api', () => {
     expect(h.status).toBe(200);
     const body = (await h.json()) as { buildings: number; clusters: number };
     expect(body.buildings).toBeGreaterThan(100);
-    expect(body.clusters).toBeGreaterThan(3);
+    expect(body.clusters).toBeGreaterThanOrEqual(6);
     const g = await app.request('/api/buildings.geojson');
     const gj = (await g.json()) as { features: unknown[] };
     expect(gj.features.length).toBe(body.buildings);
