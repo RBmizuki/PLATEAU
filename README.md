@@ -29,17 +29,29 @@ Web は `/api` を API にプロキシする。地図の下地は外部タイル
 
 ## 実 PLATEAU データを使う
 
-1. G空間情報センターから対象都市の CityGML(`udx/bldg/*.gml`, `udx/tran/*.gml`)を取得する。
-2. 取り込む:
+1. G空間情報センターから対象都市の CityGML を取得し展開する(`udx/bldg/*.gml`, `udx/tran/*.gml`, `codelists/`)。
+2. 取り込む(`codelists/` は入力の親ディレクトリから自動で探す。`--codelists <dir>` で明示も可):
    ```bash
    pnpm --filter @ashiba/plateau cli ingest /path/to/udx/bldg /path/to/udx/tran -o /abs/path/city.json --usage 411,412,413,414
    ```
+   stderr に **築年充足率**(住宅棟のうち `bldg:yearOfConstruction` を持つ割合)と **幅員の根拠の内訳**(`uro:width` / `uro:widthType` / LOD1 幾何 / `tran:function`)が出る。同じ値が JSON の `meta.coverage` に残る。
 3. API をそのデータで起動する:
    ```bash
    DATA_FILE=/abs/path/city.json pnpm --filter @ashiba/api dev
    ```
 
-詳細(属性の定義、幅員が無い都市での退避、築年の充足率)は [docs/plateau-data.md](docs/plateau-data.md)。
+幅員は `uro:width` → `uro:widthType`(同梱 codelist の区分から代表値)→ 家の前の道路面の弦長(LOD1 幾何)→ `tran:function`(市道 = 4m 級と仮置き)の順に退避し、根拠を見積画面に表示する。詳細は [docs/plateau-data.md](docs/plateau-data.md)。
+
+## 撮影・録画
+
+3 分動画の見せ場(住所 → 3D → 街区バッジ → 6 軒が灯る → 段差 → 登録 → 招待状 → 事業者がリードを受け取る)を Playwright で自動再生して webm に録画する:
+
+```bash
+pnpm dev                                  # 別ターミナル
+node scripts/record-demo.mjs demo-recording   # playwright は npm i -g playwright か PLAYWRIGHT_MODULE で指定
+```
+
+MapLibre は `preserveDrawingBuffer: true` で初期化しているので、ヘッドレス撮影でも 3D キャンバスが写る。
 
 ## 環境変数(API)
 
