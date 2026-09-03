@@ -62,11 +62,15 @@ export function CityMap(props: CityMapProps) {
       pitch: 58,
       bearing: -18,
       antialias: true,
+      // 撮影・録画(3 分動画)で canvas を確実に取り出せるように保持する
+      preserveDrawingBuffer: true,
       attributionControl: false,
     });
     map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'top-right');
     map.addControl(new maplibregl.AttributionControl({ compact: true, customAttribution: '3D都市モデル: PLATEAU(国土交通省)相当の合成データ' }));
     mapRef.current = map;
+    (window as unknown as { __ashibaMap?: MLMap }).__ashibaMap = map;
+    map.on('error', (e) => console.error('maplibre error', e.error?.message ?? e));
     return () => {
       map.remove();
       mapRef.current = null;

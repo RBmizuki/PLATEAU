@@ -81,3 +81,5 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
   .sheet { border: 0; padding: 0; }
   @page { size: A4; margin: 16mm; }
 }
+.cluster-card { width: 100%; text-align: left; background: #fff; color: var(--ink); border: 1.5px solid var(--line); border-radius: 10px; padding: 12px 14px; cursor: pointer; }
+.cluster-card:hover { border-color: #b7c2cc; }

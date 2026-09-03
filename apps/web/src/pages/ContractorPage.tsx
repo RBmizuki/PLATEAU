@@ -72,7 +72,7 @@ export function ContractorPage() {
             const density = Math.round((reg / c.candidateCount) * 100);
             return (
               <li key={c.id}>
-                <button onClick={() => { setFocus(c); setLead(null); }} style={c.id === focus?.id ? { borderColor: 'var(--accent)' } : undefined}>
+                <div role="button" tabIndex={0} className="cluster-card" onClick={() => { setFocus(c); setLead(null); }} onKeyDown={(e) => e.key === 'Enter' && (setFocus(c), setLead(null))} style={c.id === focus?.id ? { borderColor: 'var(--accent)' } : undefined}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
                     <span><strong>{c.id}</strong> <span className="pill">{c.yearMin}〜{c.yearMax}</span></span>
                     <span>{reg}/{c.candidateCount} 軒</span>
@@ -88,7 +88,7 @@ export function ContractorPage() {
                       </span>
                     </div>
                   ))}
-                </button>
+                </div>
               </li>
             );
           })}
