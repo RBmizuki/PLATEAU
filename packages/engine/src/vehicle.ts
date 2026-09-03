@@ -1,5 +1,5 @@
 import type { Building, LngLat, RateTable, Road, VehicleClass } from './types.js';
-import { localProjector, pointRingDistance, ringArea, ringPerimeter } from './geometry.js';
+import { localProjector, pointInRing, pointRingDistance, ringArea, ringPerimeter, type XY } from './geometry.js';
 
 /**
  * uro:RoadStructureAttribute/widthType のコード → 代表幅員 [m]。
@@ -130,7 +130,12 @@ export function decideBundleVehicle(
   let narrowest: NearestRoad | undefined;
   let maxSlope: number | undefined;
   for (const b of buildings) {
-    const nr = nearestRoad(b.centroid, roads);
+    let nr = nearestRoad(b.centroid, roads);
+    // 区間属性が無い道路では、家の前の弦長(局所幅員)で置き換える
+    if (nr && (nr.widthSource === 'lod1-geometry' || nr.widthSource === 'tran:function' || nr.widthSource === 'unknown')) {
+      const local = localRoadWidth(b, roads);
+      if (local) nr = { ...nr, width: local.width, widthSource: 'lod1-geometry' };
+    }
     if (nr && nr.width !== undefined && (!narrowest || narrowest.width === undefined || nr.width < narrowest.width)) {
       narrowest = nr;
     } else if (nr && !narrowest) {
@@ -142,4 +147,70 @@ export function decideBundleVehicle(
   }
   const decision = classifyVehicle(narrowest?.width, maxSlope, rt, narrowest?.widthSource);
   return { ...decision, narrowestRoadId: narrowest?.road.id, roadWidth: narrowest?.width };
+}
+
+/**
+ * 建物ごとの局所幅員(docs/plateau-data.md §2.4 推奨)。
+ * 底面の各辺の中点から、辺に垂直で建物の外側へ向かう光線を飛ばし、道路面に入った点から出た点までの
+ * 弦長を幅員とする。巨大な MultiSurface(町丁目単位)でも「家の前の幅」が測れる。
+ * 弦が maxChord を超える(交差点・広場に当たった)場合は棄却する。
+ */
+export function localRoadWidth(
+  building: Building,
+  roads: readonly Road[],
+  options: { maxReach?: number; maxChord?: number; step?: number } = {},
+): { width: number; roadId: string; distance: number } | undefined {
+  const maxReach = options.maxReach ?? 15;
+  const maxChord = options.maxChord ?? 30;
+  const step = options.step ?? 0.25;
+  const { toXY } = localProjector(building.centroid);
+  const ring = building.footprint.map(toXY);
+  const c = toXY(building.centroid);
+  const rings = roads.flatMap((r) => r.polygons.map((p) => ({ id: r.id, xy: p.map(toXY) })));
+  if (rings.length === 0 || ring.length < 4) return undefined;
+  let best: { width: number; roadId: string; distance: number } | undefined;
+  for (let i = 0; i < ring.length - 1; i++) {
+    const a = ring[i]!;
+    const b = ring[i + 1]!;
+    const mx = (a[0] + b[0]) / 2;
+    const my = (a[1] + b[1]) / 2;
+    const ex = b[0] - a[0];
+    const ey = b[1] - a[1];
+    const len = Math.hypot(ex, ey);
+    if (len < 1e-6) continue;
+    // 辺の法線のうち、重心から遠ざかる向き
+    let nx = -ey / len;
+    let ny = ex / len;
+    if ((mx - c[0]) * nx + (my - c[1]) * ny < 0) {
+      nx = -nx;
+      ny = -ny;
+    }
+    for (const road of rings) {
+      let entered: number | undefined;
+      let exited: number | undefined;
+      for (let t = step; t <= maxReach + maxChord; t += step) {
+        const p: XY = [mx + nx * t, my + ny * t];
+        const inside = pointInRing(p, road.xy);
+        if (entered === undefined) {
+          if (inside) entered = t;
+          else if (t > maxReach) break;
+        } else if (!inside) {
+          exited = t;
+          break;
+        }
+      }
+      if (entered === undefined) continue;
+      if (exited === undefined) continue; // 抜けなかった = 広場や巨大面
+      const width = exited - entered;
+      if (width > maxChord) continue;
+      const distance = entered;
+      if (!best || distance < best.distance) best = { width: round(width, 2), roadId: road.id, distance: round(distance, 2) };
+    }
+  }
+  return best;
+}
+
+function round(v: number, digits: number): number {
+  const f = 10 ** digits;
+  return Math.round(v * f) / f;
 }

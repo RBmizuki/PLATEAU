@@ -52,3 +52,21 @@ describe('vehicle class from PLATEAU roads', () => {
     expect(r.distanceMeters).toBeCloseTo(6, 0);
   });
 });
+
+describe('localRoadWidth (chord through the road polygon in front of the house)', () => {
+  it('measures the width of the road facing the house, ignoring a wide plaza', async () => {
+    const { localRoadWidth } = await import('./vehicle.js');
+    const { normalizeBuilding } = await import('./normalize.js');
+    const house = normalizeBuilding({ id: 'h', footprint: [toLngLat([0, 0]), toLngLat([8, 0]), toLngLat([8, 9]), toLngLat([0, 9]), toLngLat([0, 0])] });
+    const roads: Road[] = [
+      { id: 'front', polygons: [strip(-50, -6.5, 4, 120)] }, // 家の南 2.5m 先、幅 4m
+      { id: 'plaza', polygons: [strip(-50, 20, 60, 120)] }, // 北側の広場(幅 60m → 棄却)
+    ];
+    const r = localRoadWidth(house, roads)!;
+    expect(r.roadId).toBe('front');
+    expect(r.width).toBeGreaterThan(3.7);
+    expect(r.width).toBeLessThan(4.3);
+    expect(r.distance).toBeGreaterThan(2);
+    expect(r.distance).toBeLessThan(3);
+  });
+});
