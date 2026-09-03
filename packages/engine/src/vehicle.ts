@@ -16,17 +16,23 @@ export const WIDTH_TYPE_REPRESENTATIVE_METERS: Record<string, number> = {
   '5': 22.0, // 19.5m 以上
 };
 
-export type WidthSource = 'uro:width' | 'uro:widthType' | 'lod1-geometry' | 'unknown';
+export type WidthSource = 'uro:width' | 'uro:widthType' | 'lod1-geometry' | 'tran:function' | 'unknown';
+
+/** tran:function(Road_function.xml)からの最後の退避。6 = 市区町村道は 4m 級と仮置き。[仮定] */
+export const FUNCTION_FALLBACK_METERS: Record<string, number> = { '6': 4.0 };
 
 /** 道路の実効幅員 [m] と、その根拠。 */
 export function effectiveRoadWidth(road: Road): { width: number | undefined; source: WidthSource } {
   if (road.width !== undefined && road.width > 0) return { width: road.width, source: 'uro:width' };
   if (road.widthType !== undefined) {
-    const w = WIDTH_TYPE_REPRESENTATIVE_METERS[road.widthType];
+    const w = road.widthTypeMeters ?? WIDTH_TYPE_REPRESENTATIVE_METERS[road.widthType];
     if (w !== undefined) return { width: w, source: 'uro:widthType' };
   }
   const geom = estimateWidthFromPolygons(road.polygons);
   if (geom !== undefined) return { width: geom, source: 'lod1-geometry' };
+  if (road.function !== undefined && FUNCTION_FALLBACK_METERS[road.function] !== undefined) {
+    return { width: FUNCTION_FALLBACK_METERS[road.function], source: 'tran:function' };
+  }
   return { width: undefined, source: 'unknown' };
 }
 
@@ -97,7 +103,7 @@ export function classifyVehicle(
   for (const c of ORDER) {
     if (roadWidth >= rt.vehicle.minRoadWidth[c]) cls = c;
   }
-  let reason = `接道幅員 ${roadWidth.toFixed(1)}m(${widthSource})→ ${label(cls)}`;
+  let reason = `接道幅員 ${roadWidth.toFixed(1)}m(${widthSource}${widthSource === 'lod1-geometry' || widthSource === 'tran:function' ? '・幅員未確認' : ''})→ ${label(cls)}`;
   if (slopePercent !== undefined && slopePercent >= rt.vehicle.slopePercentDowngrade) {
     const idx = ORDER.indexOf(cls);
     if (idx > 0) {

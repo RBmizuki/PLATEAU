@@ -30,6 +30,8 @@ export interface ParseOptions {
   usageFilter?: readonly string[];
   /** srsDimension(既定 3)。2 なら「緯度 経度」の 2 つ組として読む。 */
   srsDimension?: 2 | 3;
+  /** widthType コード → 代表幅員 [m](同梱 codelist から。codelist.ts を参照)。 */
+  widthTypeMeters?: Readonly<Record<string, number>>;
 }
 
 const ARRAY_TAGS = new Set([
@@ -288,7 +290,44 @@ function parseRoad(node: Node, opts: ParseOptions, warnings: string[]): Road | u
     if (l !== undefined && (lanes === undefined || l > lanes)) lanes = l;
     widthType ??= textOf(findFirst(a, 'widthType'));
   }
-  return { id, polygons, width, numberOfLanes: lanes, widthType };
+  const fn = textOf(node['function']);
+  const widthTypeMeters = widthType !== undefined ? opts.widthTypeMeters?.[widthType] : undefined;
+  return { id, polygons, width, numberOfLanes: lanes, widthType, widthTypeMeters, function: fn };
+}
+
+export interface CoverageStats {
+  buildings: number;
+  residential: number;
+  withYear: number;
+  /** 2010〜2016 年築(FIT ブームの窓)。 */
+  fitWindow: number;
+  yearCoverage: number;
+  roads: number;
+  roadWidthSource: { 'uro:width': number; 'uro:widthType': number; 'lod1-geometry': number; 'tran:function': number; unknown: number };
+}
+
+/** 都市ごとの築年・幅員の充足率(docs/plateau-data.md §2.4 / §4.4)。 */
+export function coverageStats(buildings: readonly Building[], roads: readonly Road[], residentialCodes: readonly string[] = ['411', '412', '413', '414']): CoverageStats {
+  const resid = buildings.filter((b) => !b.usage || residentialCodes.includes(b.usage));
+  const withYear = resid.filter((b) => b.yearOfConstruction !== undefined && b.yearOfConstruction > 1);
+  const fit = withYear.filter((b) => b.yearOfConstruction! >= 2010 && b.yearOfConstruction! <= 2016);
+  const src: CoverageStats['roadWidthSource'] = { 'uro:width': 0, 'uro:widthType': 0, 'lod1-geometry': 0, 'tran:function': 0, unknown: 0 };
+  for (const r of roads) {
+    if (r.width !== undefined && r.width > 0) src['uro:width']++;
+    else if (r.widthType !== undefined) src['uro:widthType']++;
+    else if (r.polygons.some((p) => p.length >= 4)) src['lod1-geometry']++;
+    else if (r.function !== undefined) src['tran:function']++;
+    else src.unknown++;
+  }
+  return {
+    buildings: buildings.length,
+    residential: resid.length,
+    withYear: withYear.length,
+    fitWindow: fit.length,
+    yearCoverage: resid.length > 0 ? Math.round((withYear.length / resid.length) * 1000) / 1000 : 0,
+    roads: roads.length,
+    roadWidthSource: src,
+  };
 }
 
 /** CityGML 文字列を解析する。1 ファイル(3 次メッシュ 1 枚)を想定。 */

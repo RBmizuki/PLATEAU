@@ -47,6 +47,10 @@ export interface Road {
   numberOfLanes?: number;
   /** uro:RoadStructureAttribute/uro:widthType コード */
   widthType?: string;
+  /** 同梱 codelist から取り込み時に決めた widthType の代表幅員 [m](uro:width が無い都市向け)。 */
+  widthTypeMeters?: number;
+  /** tran:function コード(Road_function.xml。6 = 市区町村道)。幅員が全く無いときの最後の退避に使う。 */
+  function?: string;
 }
 
 /** 車格。道路幅員から決まる「その街区に入れる最大の車」。 */
