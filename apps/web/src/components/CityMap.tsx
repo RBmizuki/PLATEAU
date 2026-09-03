@@ -1,0 +1,147 @@
+import { useEffect, useRef } from 'react';
+import maplibregl, { type Map as MLMap, type StyleSpecification } from 'maplibre-gl';
+import 'maplibre-gl/dist/maplibre-gl.css';
+import type { FeatureCollection } from '../lib/api';
+
+export interface CityMapProps {
+  buildings: FeatureCollection | null;
+  roads: FeatureCollection | null;
+  bounds?: [number, number, number, number];
+  /** 自分の家(強調)。 */
+  selectedId?: string | null;
+  /** 束候補の街区(薄く灯す)。 */
+  candidateIds?: readonly string[];
+  /** 登録済みの家(濃く灯す)。 */
+  registeredIds?: readonly string[];
+  onSelect?: (id: string, props: Record<string, unknown>) => void;
+  flyTo?: [number, number] | null;
+  height?: number | string;
+}
+
+/**
+ * 外部タイルに依存しない自前スタイル。VITE_BASEMAP_STYLE に地理院ベクトルタイル等の
+ * style.json を渡せば下地を差し替えられる(オフライン環境では空の背景で動く)。
+ */
+const BLANK_STYLE: StyleSpecification = {
+  version: 8,
+  sources: {},
+  layers: [{ id: 'bg', type: 'background', paint: { 'background-color': '#e9eef2' } }],
+};
+
+const BUILDING_COLOR = [
+  'case',
+  ['boolean', ['feature-state', 'selected'], false],
+  '#d9480f',
+  ['boolean', ['feature-state', 'registered'], false],
+  '#e67700',
+  ['boolean', ['feature-state', 'candidate'], false],
+  '#f5b342',
+  ['==', ['get', 'usage'], '411'],
+  '#c9d3dc',
+  '#b7c2cc',
+] as unknown as maplibregl.ExpressionSpecification;
+
+export function CityMap(props: CityMapProps) {
+  const container = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<MLMap | null>(null);
+  const stateIds = useRef<Set<string>>(new Set());
+  const { buildings, roads, bounds, selectedId, candidateIds, registeredIds, onSelect, flyTo } = props;
+  const onSelectRef = useRef(onSelect);
+  onSelectRef.current = onSelect;
+
+  useEffect(() => {
+    if (!container.current || mapRef.current) return;
+    const style = (import.meta.env['VITE_BASEMAP_STYLE'] as string | undefined) ?? BLANK_STYLE;
+    const map = new maplibregl.Map({
+      container: container.current,
+      style,
+      center: [140.0468, 35.6401],
+      zoom: 17,
+      pitch: 58,
+      bearing: -18,
+      antialias: true,
+      attributionControl: false,
+    });
+    map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'top-right');
+    map.addControl(new maplibregl.AttributionControl({ compact: true, customAttribution: '3D都市モデル: PLATEAU(国土交通省)相当の合成データ' }));
+    mapRef.current = map;
+    return () => {
+      map.remove();
+      mapRef.current = null;
+    };
+  }, []);
+
+  // データ投入
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !buildings) return;
+    const apply = () => {
+      if (roads) {
+        if (map.getSource('roads')) (map.getSource('roads') as maplibregl.GeoJSONSource).setData(roads as never);
+        else {
+          map.addSource('roads', { type: 'geojson', data: roads as never });
+          map.addLayer({
+            id: 'roads-fill',
+            type: 'fill',
+            source: 'roads',
+            paint: { 'fill-color': ['interpolate', ['linear'], ['coalesce', ['get', 'width'], 4], 3, '#f3d6d6', 4.5, '#dfe6ec', 6, '#cfd8e0'], 'fill-opacity': 0.9 },
+          });
+          map.addLayer({ id: 'roads-line', type: 'line', source: 'roads', paint: { 'line-color': '#9aa8b5', 'line-width': 0.8 } });
+        }
+      }
+      if (map.getSource('buildings')) (map.getSource('buildings') as maplibregl.GeoJSONSource).setData(buildings as never);
+      else {
+        map.addSource('buildings', { type: 'geojson', data: buildings as never, promoteId: 'id' });
+        map.addLayer({
+          id: 'buildings-3d',
+          type: 'fill-extrusion',
+          source: 'buildings',
+          paint: {
+            'fill-extrusion-color': BUILDING_COLOR,
+            'fill-extrusion-height': ['get', 'height'],
+            'fill-extrusion-base': ['get', 'base'],
+            'fill-extrusion-opacity': 0.92,
+            'fill-extrusion-vertical-gradient': true,
+          },
+        });
+        map.on('click', 'buildings-3d', (e) => {
+          const f = e.features?.[0];
+          if (!f) return;
+          const id = String(f.id ?? (f.properties as { id?: string }).id);
+          onSelectRef.current?.(id, f.properties as Record<string, unknown>);
+        });
+        map.on('mouseenter', 'buildings-3d', () => (map.getCanvas().style.cursor = 'pointer'));
+        map.on('mouseleave', 'buildings-3d', () => (map.getCanvas().style.cursor = ''));
+      }
+      if (bounds && !map.getSource('__fitted')) {
+        map.addSource('__fitted', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+        map.fitBounds([bounds[0], bounds[1], bounds[2], bounds[3]], { padding: 40, pitch: 58, bearing: -18, duration: 0 });
+      }
+    };
+    if (map.isStyleLoaded()) apply();
+    else map.once('load', apply);
+  }, [buildings, roads, bounds]);
+
+  // feature-state で強調表示
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !map.getSource('buildings')) return;
+    for (const id of stateIds.current) map.setFeatureState({ source: 'buildings', id }, { selected: false, candidate: false, registered: false });
+    stateIds.current.clear();
+    const set = (id: string, patch: Record<string, boolean>) => {
+      map.setFeatureState({ source: 'buildings', id }, patch);
+      stateIds.current.add(id);
+    };
+    for (const id of candidateIds ?? []) set(id, { candidate: true });
+    for (const id of registeredIds ?? []) set(id, { registered: true });
+    if (selectedId) set(selectedId, { selected: true });
+  }, [selectedId, candidateIds, registeredIds, buildings]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !flyTo) return;
+    map.flyTo({ center: flyTo, zoom: 18.5, pitch: 60, bearing: -18, duration: 1200 });
+  }, [flyTo]);
+
+  return <div ref={container} className="city-map" style={{ height: props.height ?? 480 }} />;
+}

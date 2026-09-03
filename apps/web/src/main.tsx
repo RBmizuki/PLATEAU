@@ -1,12 +1,13 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
-
-function App() {
-  return <h1>足場の割り勘</h1>;
-}
+import { BrowserRouter } from 'react-router-dom';
+import { App } from './App';
+import './styles.css';
 
 createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <App />
+    <BrowserRouter>
+      <App />
+    </BrowserRouter>
   </React.StrictMode>,
 );
