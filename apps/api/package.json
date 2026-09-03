@@ -4,11 +4,11 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json --noEmit",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "dev": "tsx watch src/server.ts",
-    "start": "node dist/server.js"
+    "start": "tsx src/server.ts"
   },
   "dependencies": {
     "@ashiba/engine": "workspace:*",
