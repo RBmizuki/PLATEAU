@@ -5,3 +5,4 @@ export * from './adjacency.js';
 export * from './clusters.js';
 export * from './vehicle.js';
 export * from './route.js';
+export * from './pricing.js';
