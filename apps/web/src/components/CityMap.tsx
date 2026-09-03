@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import maplibregl, { type Map as MLMap, type StyleSpecification } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import type { FeatureCollection } from '../lib/api';
@@ -47,6 +47,9 @@ export function CityMap(props: CityMapProps) {
   const container = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MLMap | null>(null);
   const stateIds = useRef<Set<string>>(new Set());
+  /** スタイルの load 後に true。isStyleLoaded() は GeoJSON 処理中に false を返すので使わない。 */
+  const [ready, setReady] = useState(false);
+  const fitted = useRef(false);
   const { buildings, roads, bounds, selectedId, candidateIds, registeredIds, onSelect, flyTo, routeLine } = props;
   const onSelectRef = useRef(onSelect);
   onSelectRef.current = onSelect;
@@ -71,17 +74,19 @@ export function CityMap(props: CityMapProps) {
     mapRef.current = map;
     (window as unknown as { __ashibaMap?: MLMap }).__ashibaMap = map;
     map.on('error', (e) => console.error('maplibre error', e.error?.message ?? e));
+    map.on('load', () => setReady(true));
     return () => {
       map.remove();
       mapRef.current = null;
+      setReady(false);
     };
   }, []);
 
   // データ投入
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !buildings) return;
-    const apply = () => {
+    if (!map || !ready || !buildings) return;
+    {
       if (roads) {
         if (map.getSource('roads')) (map.getSource('roads') as maplibregl.GeoJSONSource).setData(roads as never);
         else {
@@ -119,19 +124,17 @@ export function CityMap(props: CityMapProps) {
         map.on('mouseenter', 'buildings-3d', () => (map.getCanvas().style.cursor = 'pointer'));
         map.on('mouseleave', 'buildings-3d', () => (map.getCanvas().style.cursor = ''));
       }
-      if (bounds && !map.getSource('__fitted')) {
-        map.addSource('__fitted', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+      if (bounds && !fitted.current) {
+        fitted.current = true;
         map.fitBounds([bounds[0], bounds[1], bounds[2], bounds[3]], { padding: 40, pitch: 58, bearing: -18, duration: 0 });
       }
-    };
-    if (map.isStyleLoaded()) apply();
-    else map.once('load', apply);
-  }, [buildings, roads, bounds]);
+    }
+  }, [ready, buildings, roads, bounds]);
 
   // feature-state で強調表示
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !map.getSource('buildings')) return;
+    if (!map || !ready || !map.getSource('buildings')) return;
     for (const id of stateIds.current) map.setFeatureState({ source: 'buildings', id }, { selected: false, candidate: false, registered: false });
     stateIds.current.clear();
     const set = (id: string, patch: Record<string, boolean>) => {
@@ -141,29 +144,25 @@ export function CityMap(props: CityMapProps) {
     for (const id of candidateIds ?? []) set(id, { candidate: true });
     for (const id of registeredIds ?? []) set(id, { registered: true });
     if (selectedId) set(selectedId, { selected: true });
-  }, [selectedId, candidateIds, registeredIds, buildings]);
+  }, [ready, selectedId, candidateIds, registeredIds, buildings]);
 
   // 巡回順
   useEffect(() => {
     const map = mapRef.current;
-    if (!map) return;
+    if (!map || !ready) return;
     const data = { type: 'FeatureCollection', features: routeLine ? [{ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: routeLine } }] : [] } as never;
-    const apply = () => {
-      if (map.getSource('route')) (map.getSource('route') as maplibregl.GeoJSONSource).setData(data);
-      else {
-        map.addSource('route', { type: 'geojson', data });
-        map.addLayer({ id: 'route-line', type: 'line', source: 'route', paint: { 'line-color': '#1c7ed6', 'line-width': 3, 'line-dasharray': [1.5, 1] } });
-      }
-    };
-    if (map.isStyleLoaded()) apply();
-    else map.once('load', apply);
-  }, [routeLine]);
+    if (map.getSource('route')) (map.getSource('route') as maplibregl.GeoJSONSource).setData(data);
+    else {
+      map.addSource('route', { type: 'geojson', data });
+      map.addLayer({ id: 'route-line', type: 'line', source: 'route', paint: { 'line-color': '#1c7ed6', 'line-width': 3, 'line-dasharray': [1.5, 1] } });
+    }
+  }, [ready, routeLine]);
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !flyTo) return;
+    if (!map || !ready || !flyTo) return;
     map.flyTo({ center: flyTo, zoom: 18.5, pitch: 60, bearing: -18, duration: 1200 });
-  }, [flyTo]);
+  }, [ready, flyTo]);
 
   return <div ref={container} className="city-map" style={{ height: props.height ?? 480 }} />;
 }
