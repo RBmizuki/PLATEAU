@@ -79,3 +79,46 @@ describe('bundles', () => {
     expect(hj.bundle.contractorId).toBe('c1');
   });
 });
+
+describe('quote', () => {
+  const app3 = createApp({ dataset: ds, store: new BundleStore(), now: () => new Date('2026-09-03T00:00:00Z'), threshold: 12, demo: true });
+  const cluster = ds.clusters.find((c) => c.buildingIds[0]!.startsWith('bldg-A-'))!;
+  const me = cluster.buildingIds[2]!;
+
+  it('returns a staircase with single, current and threshold prices', async () => {
+    const r = await app3.request(`/api/quote?clusterId=${cluster.id}&buildingId=${me}&installYear=2013&capacityKw=4`);
+    expect(r.status).toBe(200);
+    const j = (await r.json()) as { quote: { single: number; current: { size: number; perHouseAverage: number }; atThreshold: { size: number; perHouseAverage: number }; staircase: { steps: unknown[] }; vehicleClass: string; order: Array<{ self: boolean }> } };
+    expect(j.quote.current.size).toBe(1);
+    expect(j.quote.current.perHouseAverage).toBe(j.quote.single);
+    expect(j.quote.atThreshold.size).toBe(12);
+    expect(j.quote.atThreshold.perHouseAverage).toBeLessThan(j.quote.single * 0.75);
+    expect(j.quote.staircase.steps).toHaveLength(cluster.candidateCount);
+    expect(j.quote.vehicleClass).toBe('4t');
+    expect(j.quote.order[0]!.self).toBe(true);
+  });
+
+  it('reflects registered neighbours in the current price and the lead spec', async () => {
+    await app3.request('/api/demo/seed', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ clusterId: cluster.id, count: 6, week: '2026-W47', excludeBuildingId: me }) });
+    const r = await app3.request(`/api/quote?clusterId=${cluster.id}&buildingId=${me}&installYear=2013`);
+    const j = (await r.json()) as { quote: { current: { size: number; perHouseAverage: number }; single: number }; bundleId: string; registeredIds: string[] };
+    expect(j.quote.current.size).toBe(7);
+    expect(j.quote.current.perHouseAverage).toBeLessThan(j.quote.single);
+    expect(j.registeredIds).toHaveLength(6);
+    const seedMore = await app3.request('/api/demo/seed', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ clusterId: cluster.id, count: 12, week: '2026-W47' }) });
+    const s = (await seedMore.json()) as { bundleId: string };
+    const lead = (await (await app3.request(`/api/bundles/${s.bundleId}/lead`)).json()) as { lead: { route: string[]; leadValue: number; members: unknown[]; notes: string[] } };
+    expect(lead.lead.members).toHaveLength(12);
+    expect(lead.lead.route).toHaveLength(12);
+    expect(lead.lead.leadValue).toBeGreaterThan(50_000);
+    expect(lead.lead.notes.length).toBeGreaterThan(0);
+  });
+
+  it('alley block is limited to a kei truck', async () => {
+    const alley = ds.clusters.find((c) => c.buildingIds[0]!.startsWith('bldg-D-'))!;
+    const r = await app3.request(`/api/quote?clusterId=${alley.id}&buildingId=${alley.buildingIds[0]}&installYear=2013`);
+    const j = (await r.json()) as { quote: { vehicleClass: string; roadWidth: number } };
+    expect(j.quote.vehicleClass).toBe('2t');
+    expect(j.quote.roadWidth).toBe(3);
+  });
+});

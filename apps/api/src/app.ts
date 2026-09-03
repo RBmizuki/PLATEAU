@@ -7,6 +7,8 @@ import { gsiGeocode, matchAddress, nearestBuilding } from './geocode.js';
 import { BundleStore } from './store.js';
 import { bundleRoutes } from './routes/bundles.js';
 import { demoRoutes } from './routes/demo.js';
+import { createQuoteService } from './quote.js';
+import { memberOf } from '@ashiba/engine';
 
 export interface AppOptions {
   dataset?: Dataset;
@@ -81,7 +83,35 @@ export function createApp(options: AppOptions = {}): Hono {
     return c.json({ query: q, hits: [] });
   });
 
-  app.route('/api/bundles', bundleRoutes({ ds, store, defaultThreshold: threshold, now }));
+  const quotes = createQuoteService(ds);
+
+  app.get('/api/rate-table', (c) => c.json(quotes.rateTable));
+
+  /** 住民向け試算: 自分 + 登録済み + 残り候補の段差価格。 */
+  app.get('/api/quote', (c) => {
+    const clusterId = c.req.query('clusterId') ?? '';
+    const buildingId = c.req.query('buildingId') ?? '';
+    const installYear = Number(c.req.query('installYear') ?? 2013);
+    const capacityKw = c.req.query('capacityKw') ? Number(c.req.query('capacityKw')) : undefined;
+    const week = c.req.query('week');
+    const cluster = ds.clusterById.get(clusterId);
+    if (!cluster) return c.json({ error: `cluster ${clusterId} not found` }, 404);
+    if (!ds.buildingById.has(buildingId)) return c.json({ error: `building ${buildingId} not found` }, 404);
+    if (!cluster.buildingIds.includes(buildingId)) return c.json({ error: 'building is not in this cluster' }, 400);
+    const forming = store.list({ clusterId }).filter((b) => b.status === 'forming' || b.status === 'threshold_met');
+    const bundle = week ? forming.find((b) => b.week === week) : forming.sort((a, b) => b.members.length - a.members.length)[0];
+    const registered = (bundle?.members ?? [])
+      .map((m) => {
+        const b = ds.buildingById.get(m.buildingId);
+        return b ? memberOf(b, m.installYear, m.capacityKw) : undefined;
+      })
+      .filter((m): m is NonNullable<typeof m> => m !== undefined);
+    const th = bundle?.threshold ?? Math.min(threshold, cluster.candidateCount);
+    const q = quotes.staircaseFor({ cluster, selfBuildingId: buildingId, installYear, capacityKw, registered, threshold: th });
+    return c.json({ quote: q, bundleId: bundle?.id ?? null, week: bundle?.week ?? null, registeredIds: registered.map((m) => m.building.id) });
+  });
+
+  app.route('/api/bundles', bundleRoutes({ ds, store, defaultThreshold: threshold, now, quote: (b) => quotes.bundleQuote(b), lead: (b) => quotes.lead(b) }));
   if (demo) app.route('/api/demo', demoRoutes(ds, store, now, threshold));
 
   return app;

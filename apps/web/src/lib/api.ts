@@ -1,4 +1,4 @@
-import type { Building, Neighbor, YearCluster } from '@ashiba/engine';
+import type { Building, BundleQuote, HouseBreakdown, LeadSpec, Neighbor, RateTable, Staircase, VehicleClass, YearCluster } from '@ashiba/engine';
 
 export type FeatureCollection = GeoJSON.FeatureCollection<GeoJSON.Polygon, Record<string, unknown>>;
 
@@ -32,13 +32,70 @@ export interface GeocodeHit {
   score: number;
 }
 
+export interface ResidentQuote {
+  rateTableId: string;
+  clusterId: string;
+  vehicleClass: VehicleClass;
+  vehicleReason: string;
+  roadWidth: number | null;
+  threshold: number;
+  single: number;
+  current: { size: number; perHouseAverage: number; trucks: number };
+  atThreshold: { size: number; perHouseAverage: number; trucks: number };
+  mine: HouseBreakdown;
+  staircase: Staircase;
+  order: Array<{ buildingId: string; registered: boolean; self: boolean }>;
+}
+
+export interface QuoteResponse {
+  quote: ResidentQuote;
+  bundleId: string | null;
+  week: string | null;
+  registeredIds: string[];
+}
+
+export interface BundleSummary {
+  id: string;
+  clusterId: string;
+  week: string;
+  status: 'forming' | 'threshold_met' | 'handed_to_contractor' | 'cancelled';
+  threshold: number;
+  registered: number;
+  remaining: number;
+  candidateCount: number | null;
+  members: Array<{ buildingId: string; installYear: number; capacityKw: number; address: string | null; registeredAt: string }>;
+  createdAt: string;
+  updatedAt: string;
+  handedOverAt: string | null;
+  contractorId: string | null;
+}
+
 export const api = {
   dataset: () => getJson<DatasetInfo>('/api/dataset'),
   buildingsGeoJSON: () => getJson<FeatureCollection>('/api/buildings.geojson'),
   roadsGeoJSON: () => getJson<FeatureCollection>('/api/roads.geojson'),
   building: (id: string) => getJson<{ building: Building; neighbors: Neighbor[]; clusterId: string | null }>(`/api/buildings/${encodeURIComponent(id)}`),
   geocode: (q: string) => getJson<{ query: string; hits: GeocodeHit[] }>(`/api/geocode?q=${encodeURIComponent(q)}`),
-  clustersNear: (installYear: number, lon: number, lat: number) =>
-    getJson<{ clusters: YearCluster[] }>(`/api/clusters?installYear=${installYear}&lon=${lon}&lat=${lat}`),
+  clustersNear: (installYear: number, lon: number, lat: number) => getJson<{ clusters: YearCluster[] }>(`/api/clusters?installYear=${installYear}&lon=${lon}&lat=${lat}`),
   clusters: () => getJson<{ clusters: YearCluster[] }>('/api/clusters'),
+  rateTable: () => getJson<RateTable>('/api/rate-table'),
+  quote: (p: { clusterId: string; buildingId: string; installYear: number; capacityKw?: number; week?: string }) => {
+    const q = new URLSearchParams({ clusterId: p.clusterId, buildingId: p.buildingId, installYear: String(p.installYear) });
+    if (p.capacityKw) q.set('capacityKw', String(p.capacityKw));
+    if (p.week) q.set('week', p.week);
+    return getJson<QuoteResponse>(`/api/quote?${q.toString()}`);
+  },
+  weeks: () => getJson<{ weeks: string[] }>('/api/bundles/weeks'),
+  bundles: (clusterId?: string) => getJson<{ bundles: BundleSummary[] }>(`/api/bundles${clusterId ? `?clusterId=${encodeURIComponent(clusterId)}` : ''}`),
+  bundle: (id: string) => getJson<{ bundle: BundleSummary; quote: BundleQuote | null }>(`/api/bundles/${encodeURIComponent(id)}`),
+  join: (body: { clusterId: string; week?: string; buildingId: string; installYear: number; capacityKw?: number; contactName?: string }) =>
+    postJson<{ bundle: BundleSummary; quote: BundleQuote | null }>('/api/bundles/join', body),
+  leave: (id: string, buildingId: string) => postJson<{ bundle: BundleSummary }>(`/api/bundles/${encodeURIComponent(id)}/leave`, { buildingId }),
+  handover: (id: string, contractorId: string) => postJson<{ bundle: BundleSummary; lead: LeadSpec | null }>(`/api/bundles/${encodeURIComponent(id)}/handover`, { contractorId }),
+  lead: (id: string) => getJson<{ bundle: BundleSummary; lead: LeadSpec | null }>(`/api/bundles/${encodeURIComponent(id)}/lead`),
+  demoSeed: (body: { clusterId: string; count: number; week?: string; excludeBuildingId?: string }) => postJson<{ bundleId: string; registered: number }>('/api/demo/seed', body),
+  demoReset: () => postJson<{ ok: boolean }>('/api/demo/reset', {}),
 };
+
+export const yen = (v: number) => `${Math.round(v / 1000) / 10}万円`;
+export const yenFull = (v: number) => `${v.toLocaleString('ja-JP')}円`;

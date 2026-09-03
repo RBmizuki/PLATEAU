@@ -6,3 +6,5 @@ export * from './clusters.js';
 export * from './vehicle.js';
 export * from './route.js';
 export * from './pricing.js';
+export * from './rates.js';
+export * from './lead.js';

@@ -1,6 +1,7 @@
 import { NavLink, Route, Routes } from 'react-router-dom';
 import { ResidentPage } from './pages/ResidentPage';
 import { ContractorPage } from './pages/ContractorPage';
+import { InvitationPage } from './pages/InvitationPage';
 
 export function App() {
   return (
@@ -16,6 +17,7 @@ export function App() {
       <Routes>
         <Route path="/" element={<ResidentPage />} />
         <Route path="/contractor" element={<ContractorPage />} />
+        <Route path="/invite/:bundleId" element={<InvitationPage />} />
       </Routes>
     </>
   );

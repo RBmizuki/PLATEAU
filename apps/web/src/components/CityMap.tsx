@@ -15,6 +15,8 @@ export interface CityMapProps {
   registeredIds?: readonly string[];
   onSelect?: (id: string, props: Record<string, unknown>) => void;
   flyTo?: [number, number] | null;
+  /** 巡回順の折れ線(事業者側)。 */
+  routeLine?: [number, number][] | null;
   height?: number | string;
 }
 
@@ -45,7 +47,7 @@ export function CityMap(props: CityMapProps) {
   const container = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MLMap | null>(null);
   const stateIds = useRef<Set<string>>(new Set());
-  const { buildings, roads, bounds, selectedId, candidateIds, registeredIds, onSelect, flyTo } = props;
+  const { buildings, roads, bounds, selectedId, candidateIds, registeredIds, onSelect, flyTo, routeLine } = props;
   const onSelectRef = useRef(onSelect);
   onSelectRef.current = onSelect;
 
@@ -136,6 +138,22 @@ export function CityMap(props: CityMapProps) {
     for (const id of registeredIds ?? []) set(id, { registered: true });
     if (selectedId) set(selectedId, { selected: true });
   }, [selectedId, candidateIds, registeredIds, buildings]);
+
+  // 巡回順
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const data = { type: 'FeatureCollection', features: routeLine ? [{ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: routeLine } }] : [] } as never;
+    const apply = () => {
+      if (map.getSource('route')) (map.getSource('route') as maplibregl.GeoJSONSource).setData(data);
+      else {
+        map.addSource('route', { type: 'geojson', data });
+        map.addLayer({ id: 'route-line', type: 'line', source: 'route', paint: { 'line-color': '#1c7ed6', 'line-width': 3, 'line-dasharray': [1.5, 1] } });
+      }
+    };
+    if (map.isStyleLoaded()) apply();
+    else map.once('load', apply);
+  }, [routeLine]);
 
   useEffect(() => {
     const map = mapRef.current;
