@@ -17,6 +17,8 @@ export interface CityMapProps {
   flyTo?: [number, number] | null;
   /** 巡回順の折れ線(事業者側)。 */
   routeLine?: [number, number][] | null;
+  /** 出典表示(データセットの meta.attribution)。 */
+  attribution?: string;
   height?: number | string;
 }
 
@@ -50,7 +52,8 @@ export function CityMap(props: CityMapProps) {
   /** スタイルの load 後に true。isStyleLoaded() は GeoJSON 処理中に false を返すので使わない。 */
   const [ready, setReady] = useState(false);
   const fitted = useRef(false);
-  const { buildings, roads, bounds, selectedId, candidateIds, registeredIds, onSelect, flyTo, routeLine } = props;
+  const { buildings, roads, bounds, selectedId, candidateIds, registeredIds, onSelect, flyTo, routeLine, attribution } = props;
+  const attributionRef = useRef<maplibregl.AttributionControl | null>(null);
   const onSelectRef = useRef(onSelect);
   onSelectRef.current = onSelect;
 
@@ -70,7 +73,9 @@ export function CityMap(props: CityMapProps) {
       attributionControl: false,
     });
     map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'top-right');
-    map.addControl(new maplibregl.AttributionControl({ compact: true, customAttribution: '3D都市モデル: PLATEAU(国土交通省)相当の合成データ' }));
+    const attr = new maplibregl.AttributionControl({ compact: true, customAttribution: '3D都市モデル: PLATEAU(国土交通省)相当の合成データ' });
+    map.addControl(attr);
+    attributionRef.current = attr;
     mapRef.current = map;
     (window as unknown as { __ashibaMap?: MLMap }).__ashibaMap = map;
     map.on('error', (e) => console.error('maplibre error', e.error?.message ?? e));
@@ -145,6 +150,16 @@ export function CityMap(props: CityMapProps) {
     for (const id of registeredIds ?? []) set(id, { registered: true });
     if (selectedId) set(selectedId, { selected: true });
   }, [ready, selectedId, candidateIds, registeredIds, buildings]);
+
+  // 出典表示の差し替え
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !attribution) return;
+    if (attributionRef.current) map.removeControl(attributionRef.current);
+    const attr = new maplibregl.AttributionControl({ compact: true, customAttribution: attribution });
+    map.addControl(attr);
+    attributionRef.current = attr;
+  }, [attribution]);
 
   // 巡回順
   useEffect(() => {

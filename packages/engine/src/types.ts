@@ -77,13 +77,21 @@ export interface PanelInstallation {
   capacityKw?: number;
 }
 
-/** 築年クラスタ = 同時期分譲・同時期搭載が疑われる街区単位の束の種。 */
+/**
+ * 束の種 = 同時期分譲・同時期搭載が疑われる街区単位の建物群。
+ * basis が 'year' なら bldg:yearOfConstruction の街区クラスタ、
+ * 'geometry' なら築年が無い都市向けの形状コホート(同じ規模の家が等間隔に並ぶ=同時期分譲の疑い)。
+ */
 export interface YearCluster {
   id: string;
-  /** クラスタの代表年(中央値)。 */
+  /** 根拠。'geometry' のとき medianYear / yearMin / yearMax は 0(未知)。 */
+  basis?: 'year' | 'geometry';
+  /** クラスタの代表年(中央値)。basis='geometry' では 0。 */
   medianYear: number;
   yearMin: number;
   yearMax: number;
+  /** 形状コホートの代表値(basis='geometry')。 */
+  cohort?: { medianAreaSqm: number; medianHeightM: number; medianGapM: number };
   buildingIds: string[];
   centroid: LngLat;
   /** 断定表示しない「候補」の軒数(登録前)。 */

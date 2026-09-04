@@ -134,6 +134,7 @@ export function detectYearClusters(
     const centroid = meanLngLat(members.map((i) => buildings[i]!.centroid));
     clusters.push({
       id: '',
+      basis: 'year',
       medianYear,
       yearMin: years[0]!,
       yearMax: years[years.length - 1]!,
@@ -150,19 +151,121 @@ export function detectYearClusters(
   return clusters;
 }
 
-/** 設置年の申告から「寿命の窓が重なりうる」クラスタを探す(街区単位)。 */
+export interface GeometryCohortOptions {
+  /** 同じ列とみなす外壁間の距離の上限 [m](道路を挟むと通常これを超える)。 */
+  linkGapMeters?: number;
+  /** 底面積の比がこの範囲なら「同じ規模」。 */
+  areaRatioMax?: number;
+  /** 高さの差がこれ以下なら「同じ規模」[m]。 */
+  heightDiffMax?: number;
+  /** 戸建てとみなす底面積の範囲 [m²]。 */
+  houseAreaRange?: [number, number];
+  /** 戸建てとみなす高さの上限 [m]。 */
+  maxHeightMeters?: number;
+  minSize?: number;
+}
+
+/**
+ * 形状コホート検出(築年が無い都市の退避)。
+ * 隣棟間隔が小さく、底面積と高さが揃った戸建てが連なる列を「同時期分譲の疑い」としてまとめる。
+ * 断定ではないので UI では「推定」と表示すること。
+ */
+export function detectGeometryCohorts(
+  buildings: readonly Building[],
+  graph: AdjacencyGraph,
+  options: GeometryCohortOptions = {},
+): YearCluster[] {
+  const linkGap = options.linkGapMeters ?? 4;
+  const ratioMax = options.areaRatioMax ?? 1.45;
+  const heightDiffMax = options.heightDiffMax ?? 1.5;
+  const [areaMin, areaMax] = options.houseAreaRange ?? [35, 220];
+  const maxHeight = options.maxHeightMeters ?? 13;
+  const minSize = options.minSize ?? 4;
+
+  const index = new Map<string, number>();
+  buildings.forEach((b, i) => index.set(b.id, i));
+  const heightOf = (b: Building) => b.measuredHeight ?? (b.storeysAboveGround ?? 2) * 3;
+  const isHouse = (b: Building) => b.footprintArea >= areaMin && b.footprintArea <= areaMax && heightOf(b) <= maxHeight;
+
+  const uf = new UnionFind(buildings.length);
+  buildings.forEach((b, i) => {
+    if (!isHouse(b)) return;
+    for (const n of graph.neighbors[b.id] ?? []) {
+      if (n.gapMeters > linkGap) continue;
+      const j = index.get(n.buildingId);
+      if (j === undefined) continue;
+      const o = buildings[j]!;
+      if (!isHouse(o)) continue;
+      const ratio = Math.max(b.footprintArea, o.footprintArea) / Math.max(1e-6, Math.min(b.footprintArea, o.footprintArea));
+      if (ratio > ratioMax) continue;
+      if (Math.abs(heightOf(b) - heightOf(o)) > heightDiffMax) continue;
+      uf.union(i, j);
+    }
+  });
+
+  const groups = new Map<number, number[]>();
+  buildings.forEach((b, i) => {
+    if (!isHouse(b)) return;
+    const r = uf.find(i);
+    const g = groups.get(r);
+    if (g) g.push(i);
+    else groups.set(r, [i]);
+  });
+
+  const median = (xs: number[]) => {
+    const s = [...xs].sort((a, b) => a - b);
+    return s[Math.floor(s.length / 2)] ?? 0;
+  };
+  const clusters: YearCluster[] = [];
+  for (const members of groups.values()) {
+    if (members.length < minSize) continue;
+    const ids = new Set(members.map((i) => buildings[i]!.id));
+    const gaps: number[] = [];
+    for (const i of members) {
+      const n = (graph.neighbors[buildings[i]!.id] ?? []).find((x) => ids.has(x.buildingId));
+      if (n) gaps.push(n.gapMeters);
+    }
+    clusters.push({
+      id: '',
+      basis: 'geometry',
+      medianYear: 0,
+      yearMin: 0,
+      yearMax: 0,
+      cohort: {
+        medianAreaSqm: Math.round(median(members.map((i) => buildings[i]!.footprintArea)) * 10) / 10,
+        medianHeightM: Math.round(median(members.map((i) => heightOf(buildings[i]!))) * 10) / 10,
+        medianGapM: Math.round(median(gaps) * 100) / 100,
+      },
+      buildingIds: members.map((i) => buildings[i]!.id).sort(),
+      centroid: meanLngLat(members.map((i) => buildings[i]!.centroid)),
+      candidateCount: members.length,
+    });
+  }
+  clusters.sort((a, b) => b.candidateCount - a.candidateCount || a.centroid[0] - b.centroid[0]);
+  clusters.forEach((c, i) => {
+    c.id = `gc-${String(i + 1).padStart(3, '0')}`;
+  });
+  return clusters;
+}
+
+/** 設置年の申告から「寿命の窓が重なりうる」クラスタを探す(街区単位)。形状コホートは年で絞らない。 */
 export function clustersForInstallYear(
   clusters: readonly YearCluster[],
   installYear: number,
   near: LngLat,
-  options: { yearWindow?: number; maxDistanceMeters?: number } = {},
+  options: { yearWindow?: number; maxDistanceMeters?: number; buildingId?: string; limit?: number } = {},
 ): YearCluster[] {
   const yearWindow = options.yearWindow ?? 3;
   const maxDistance = options.maxDistanceMeters ?? 400;
-  return clusters
-    .filter((c) => Math.abs(c.medianYear - installYear) <= yearWindow)
+  const limit = options.limit ?? 6;
+  const own = options.buildingId ? clusters.find((c) => c.buildingIds.includes(options.buildingId!)) : undefined;
+  const rest = clusters
+    .filter((c) => c !== own)
+    .filter((c) => c.basis === 'geometry' || Math.abs(c.medianYear - installYear) <= yearWindow)
     .filter((c) => haversineMeters(c.centroid, near) <= maxDistance)
     .sort((a, b) => haversineMeters(a.centroid, near) - haversineMeters(b.centroid, near));
+  // 自分の家が属する街区を必ず先頭に(築年の窓が合わなくても候補として見せる)
+  return (own ? [own, ...rest] : rest).slice(0, limit);
 }
 
 function meanLngLat(points: readonly LngLat[]): LngLat {

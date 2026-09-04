@@ -56,6 +56,7 @@ export interface Fixture {
     seed: number;
     blocks: FixtureBlockSpec[];
     note: string;
+    attribution: string;
   };
 }
 
@@ -173,6 +174,7 @@ export function generateFixture(options: FixtureOptions = {}): Fixture {
       seed,
       blocks: DEFAULT_BLOCKS,
       note: '合成データ。座標は千葉市美浜区付近を例示的に用いており実在の建物・世帯とは無関係。',
+      attribution: '3D都市モデル: PLATEAU(国土交通省)相当の合成データ',
     },
   };
 }

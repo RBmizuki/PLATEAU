@@ -34,7 +34,7 @@ export function createApp(options: AppOptions = {}): Hono {
     c.json({ ok: true, source: ds.source, buildings: ds.buildings.length, roads: ds.roads.length, clusters: ds.clusters.length }),
   );
 
-  app.get('/api/dataset', (c) => c.json({ source: ds.source, bounds: ds.bounds, meta: ds.meta, counts: { buildings: ds.buildings.length, roads: ds.roads.length, clusters: ds.clusters.length } }));
+  app.get('/api/dataset', (c) => c.json({ source: ds.source, bounds: ds.bounds, meta: ds.meta, clusterBasis: ds.clusterBasis, yearCoverage: ds.yearCoverage, counts: { buildings: ds.buildings.length, roads: ds.roads.length, clusters: ds.clusters.length } }));
 
   app.get('/api/buildings.geojson', (c) => c.json(ds.buildingsGeoJSON));
   app.get('/api/roads.geojson', (c) => c.json(ds.roadsGeoJSON));
@@ -53,6 +53,8 @@ export function createApp(options: AppOptions = {}): Hono {
       const found = clustersForInstallYear(ds.clusters, Number(year), [Number(lon), Number(lat)], {
         yearWindow: Number(c.req.query('yearWindow') ?? 3),
         maxDistanceMeters: Number(c.req.query('maxDistance') ?? 400),
+        buildingId: c.req.query('buildingId') ?? undefined,
+        limit: Number(c.req.query('limit') ?? 6),
       });
       return c.json({ clusters: found });
     }

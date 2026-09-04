@@ -21,6 +21,8 @@ export interface DatasetInfo {
   source: string;
   bounds: [number, number, number, number];
   meta: Record<string, unknown>;
+  clusterBasis?: 'year' | 'geometry';
+  yearCoverage?: number;
   counts: { buildings: number; roads: number; clusters: number };
 }
 
@@ -76,7 +78,8 @@ export const api = {
   roadsGeoJSON: () => getJson<FeatureCollection>('/api/roads.geojson'),
   building: (id: string) => getJson<{ building: Building; neighbors: Neighbor[]; clusterId: string | null }>(`/api/buildings/${encodeURIComponent(id)}`),
   geocode: (q: string) => getJson<{ query: string; hits: GeocodeHit[] }>(`/api/geocode?q=${encodeURIComponent(q)}`),
-  clustersNear: (installYear: number, lon: number, lat: number) => getJson<{ clusters: YearCluster[] }>(`/api/clusters?installYear=${installYear}&lon=${lon}&lat=${lat}`),
+  clustersNear: (installYear: number, lon: number, lat: number, buildingId?: string) =>
+    getJson<{ clusters: YearCluster[] }>(`/api/clusters?installYear=${installYear}&lon=${lon}&lat=${lat}${buildingId ? `&buildingId=${encodeURIComponent(buildingId)}` : ''}`),
   clusters: () => getJson<{ clusters: YearCluster[] }>('/api/clusters'),
   rateTable: () => getJson<RateTable>('/api/rate-table'),
   quote: (p: { clusterId: string; buildingId: string; installYear: number; capacityKw?: number; week?: string }) => {
@@ -99,3 +102,12 @@ export const api = {
 
 export const yen = (v: number) => `${Math.round(v / 1000) / 10}万円`;
 export const yenFull = (v: number) => `${v.toLocaleString('ja-JP')}円`;
+
+/** 束の種のラベル(築年クラスタ / 形状コホート)。 */
+export function clusterLabel(c: { basis?: 'year' | 'geometry'; medianYear: number; yearMin: number; yearMax: number; cohort?: { medianAreaSqm: number; medianHeightM: number; medianGapM: number } }): string {
+  if (c.basis === 'geometry' || !c.medianYear) {
+    const g = c.cohort;
+    return g ? `同時期分譲の疑い(形状から推定・底面 ${Math.round(g.medianAreaSqm)} m²・隣棟 ${g.medianGapM} m)` : '同時期分譲の疑い(形状から推定)';
+  }
+  return `${c.medianYear} 年ごろ(${c.yearMin}〜${c.yearMax})`;
+}

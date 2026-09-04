@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { YearCluster } from '@ashiba/engine';
-import { api, type FeatureCollection, type GeocodeHit } from '../lib/api';
+import { api, clusterLabel, type FeatureCollection, type GeocodeHit } from '../lib/api';
 import { CityMap } from '../components/CityMap';
 import { QuoteStep } from './steps/QuoteStep';
 
@@ -8,7 +8,9 @@ export function ResidentPage() {
   const [buildings, setBuildings] = useState<FeatureCollection | null>(null);
   const [roads, setRoads] = useState<FeatureCollection | null>(null);
   const [bounds, setBounds] = useState<[number, number, number, number] | undefined>();
-  const [query, setQuery] = useState('千葉市美浜区真砂三丁目A-3');
+  const [query, setQuery] = useState('');
+  const [placeholder, setPlaceholder] = useState('例: 千葉市美浜区真砂三丁目A-3');
+  const [attribution, setAttribution] = useState<string | undefined>();
   const [hits, setHits] = useState<GeocodeHit[]>([]);
   const [selected, setSelected] = useState<GeocodeHit | null>(null);
   const [installYear, setInstallYear] = useState(2013);
@@ -19,7 +21,12 @@ export function ResidentPage() {
   const [registeredIds, setRegisteredIds] = useState<string[]>([]);
 
   useEffect(() => {
-    api.dataset().then((d) => setBounds(d.bounds)).catch(() => undefined);
+    api.dataset().then((d) => {
+      setBounds(d.bounds);
+      setAttribution(typeof d.meta['attribution'] === 'string' ? (d.meta['attribution'] as string) : undefined);
+      if (d.clusterBasis === 'geometry') setPlaceholder('住所が無いデータです。地図の家をクリックしてください');
+      else setQuery('千葉市美浜区真砂三丁目A-3');
+    }).catch(() => undefined);
     api.buildingsGeoJSON().then(setBuildings).catch(console.error);
     api.roadsGeoJSON().then(setRoads).catch(console.error);
   }, []);
@@ -40,7 +47,7 @@ export function ResidentPage() {
 
   async function findClusters() {
     if (!selected) return;
-    const r = await api.clustersNear(installYear, selected.centroid[0], selected.centroid[1]);
+    const r = await api.clustersNear(installYear, selected.centroid[0], selected.centroid[1], selected.id);
     setClusters(r.clusters);
     setChosenCluster(r.clusters[0] ?? null);
   }
@@ -53,7 +60,7 @@ export function ResidentPage() {
         <section className={`step ${selected ? 'done' : 'active'}`}>
           <h2><span className="n">1</span>ご自宅の住所</h2>
           <p className="muted">住所を入れると、ご自宅が 3D の街並みの中に立ちます。</p>
-          <input type="text" value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && search()} placeholder="例: 千葉市美浜区真砂三丁目A-3" />
+          <input type="text" value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && search()} placeholder={placeholder} />
           <div className="row">
             <button onClick={search}>この住所で探す</button>
             <span className="note">地図の家を直接クリックしても選べます</span>
@@ -83,10 +90,13 @@ export function ResidentPage() {
             <div className="row">
               {clusters.map((c) => (
                 <button key={c.id} className={c.id === chosenCluster?.id ? 'accent' : 'secondary'} onClick={() => setChosenCluster(c)}>
-                  {c.medianYear}年ごろの街区・候補 {c.candidateCount} 軒
+                  {c.basis === 'geometry' ? '同時期分譲の疑い(推定)' : `${c.medianYear}年ごろの街区`}・候補 {c.candidateCount} 軒
                 </button>
               ))}
             </div>
+          )}
+          {chosenCluster && chosenCluster.basis === 'geometry' && (
+            <p className="note">この都市の 3D 都市モデルには築年が入っていないため、同じ規模の家が等間隔に並ぶ列を「同時期分譲の疑い」として形状から推定しています({clusterLabel(chosenCluster)})。</p>
           )}
           {chosenCluster && (
             <p className="badge" style={{ marginTop: 12 }}>
@@ -118,6 +128,7 @@ export function ResidentPage() {
           candidateIds={candidateIds}
           registeredIds={registeredIds}
           flyTo={flyTo}
+          attribution={attribution}
           height="calc(100vh - 62px)"
           onSelect={(id, props) => choose({ id, address: (props['address'] as string | null) ?? null, centroid: flyTo ?? [0, 0], method: 'click', score: 1 })}
         />

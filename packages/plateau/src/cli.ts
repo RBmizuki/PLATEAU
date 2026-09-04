@@ -1,7 +1,7 @@
 #!/usr/bin/env tsx
 /**
  * 使い方:
- *   pnpm --filter @ashiba/plateau cli ingest <file.gml|dir> [...] -o out.json [--usage 411,412,413,414] [--codelists <dir>] [--dem <udx/dem dir>]
+ *   pnpm --filter @ashiba/plateau cli ingest <file.gml|dir> [...] -o out.json [--usage 411,412,413,414] [--codelists <dir>] [--dem <udx/dem dir>] [--attribution "出典"]
  *   (--codelists 省略時は入力の親ディレクトリにある codelists/ を自動で探す)
  *   pnpm --filter @ashiba/plateau cli fixture -o out.json [--citygml out.gml]
  */
@@ -43,7 +43,8 @@ const cmd = process.argv[2];
 if (cmd === 'ingest') {
   const out = arg('-o') ?? 'plateau.json';
   const usage = arg('--usage')?.split(',');
-  const inputs = process.argv.slice(3).filter((a, i, all) => !a.startsWith('-') && all[i - 1] !== '-o' && all[i - 1] !== '--usage' && all[i - 1] !== '--codelists' && all[i - 1] !== '--dem');
+  const inputs = process.argv.slice(3).filter((a, i, all) => !a.startsWith('-') && all[i - 1] !== '-o' && all[i - 1] !== '--usage' && all[i - 1] !== '--codelists' && all[i - 1] !== '--dem' && all[i - 1] !== '--attribution');
+  const attribution = arg('--attribution') ?? `3D都市モデル(Project PLATEAU)${inputs.map((i) => resolve(i).split('/').filter((seg) => /^\d{5}_/.test(seg)).pop() ?? '').filter(Boolean)[0] ?? ''}・国土交通省`;
   const codelistDir = arg('--codelists') ?? findCodelists(inputs);
   let widthTypeMeters: Record<string, number> | undefined;
   if (codelistDir) {
@@ -78,7 +79,7 @@ if (cmd === 'ingest') {
     }
   }
   const coverage = coverageStats(buildings, roads);
-  writeFileSync(out, JSON.stringify({ buildings, roads, meta: { source: inputs, codelists: codelistDir ?? null, dem: demDir ? { dir: demDir, applied: demApplied } : null, coverage, warnings: warnings.slice(0, 200) } }));
+  writeFileSync(out, JSON.stringify({ buildings, roads, meta: { source: inputs, attribution, codelists: codelistDir ?? null, dem: demDir ? { dir: demDir, applied: demApplied } : null, coverage, warnings: warnings.slice(0, 200) } }));
   console.error(`wrote ${out}: ${buildings.length} buildings, ${roads.length} roads`);
   console.error(`築年充足率 ${(coverage.yearCoverage * 100).toFixed(1)}% (${coverage.withYear}/${coverage.residential} 住宅棟、2010〜2016 年築 ${coverage.fitWindow})`);
   console.error(`幅員の根拠 ${JSON.stringify(coverage.roadWidthSource)}`);

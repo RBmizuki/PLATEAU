@@ -27,6 +27,8 @@ export function matchAddress(ds: Dataset, query: string, limit = 5): GeocodeHit[
   const q = normalizeJa(query);
   if (!q) return [];
   const hits: GeocodeHit[] = [];
+  const byId = ds.buildingById.get(query.trim());
+  if (byId) hits.push({ building: byId, method: 'address-match', score: 1 });
   for (const b of ds.buildings) {
     if (!b.address) continue;
     const a = normalizeJa(b.address);

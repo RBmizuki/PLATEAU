@@ -55,7 +55,7 @@ export function createQuoteService(ds: Dataset, rateTable: RateTable = DEFAULT_R
     const cached = siteCache.get(cluster.id);
     if (cached) return cached;
     const buildings = cluster.buildingIds.map((id) => ds.buildingById.get(id)!).filter(Boolean);
-    const v = decideBundleVehicle(buildings, ds.roads, rateTable);
+    const v = decideBundleVehicle(buildings, ds.roads, rateTable, ds.buildings);
     const site = { vehicleClass: v.vehicleClass, vehicleReason: v.reason, adjacency: ds.adjacency, roadWidth: v.roadWidth };
     siteCache.set(cluster.id, site);
     return site;

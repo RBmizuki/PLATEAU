@@ -81,3 +81,35 @@ describe('road barriers split clusters into street blocks', () => {
     expect(withRoad[0]!.buildingIds).toEqual(['b', 'c']);
   });
 });
+
+describe('fallbacks for cities without roads or years', () => {
+  it('estimates street width from facing buildings', async () => {
+    const { estimateStreetWidthFromBuildings } = await import('./vehicle.js');
+    // 南側の列と北側の列が 8 m の街路(幅 6 m + 後退 1 m × 2)を挟んで向かい合い、裏には 4 m の隙間で別の家がある
+    const south = [house('s0', 0, 0), house('s1', 9.2, 0), house('s2', 18.4, 0)];
+    const north = [house('n0', 0, 16), house('n1', 9.2, 16), house('n2', 18.4, 16)];
+    const back = [house('b0', 0, -12), house('b1', 9.2, -12), house('b2', 18.4, -12)];
+    const est = estimateStreetWidthFromBuildings(south[1]!, [...south, ...north, ...back])!;
+    expect(est.corridor).toBeCloseTo(8, 0);
+    expect(est.width).toBeCloseTo(6, 0);
+    expect(est.facingId).toBe('n1');
+    // 裏の家との 4 m の隙間や隣家との 1.2 m は街路とみなさない
+    const alone = estimateStreetWidthFromBuildings(back[1]!, [...back, ...south]);
+    expect(alone).toBeUndefined();
+  });
+
+  it('detects geometry cohorts when years are missing', async () => {
+    const { detectGeometryCohorts } = await import('./clusters.js');
+    const rowA = [0, 1, 2, 3, 4].map((i) => house(`a${i}`, i * 9.2, 0));
+    const big = normalizeBuilding({ id: 'big', footprint: [toLngLat([46, 0]), toLngLat([70, 0]), toLngLat([70, 9]), toLngLat([46, 9])], storeysAboveGround: 4, measuredHeight: 13 });
+    const rowB = [0, 1, 2, 3].map((i) => house(`b${i}`, 72 + i * 9.2, 0));
+    const all = [...rowA, big, ...rowB].map((b) => ({ ...b, yearOfConstruction: undefined }));
+    const graph = buildAdjacencyGraph(all, { maxGapMeters: 12 });
+    const cohorts = detectGeometryCohorts(all, graph, { minSize: 3 });
+    expect(cohorts).toHaveLength(2);
+    expect(cohorts[0]!.basis).toBe('geometry');
+    expect(cohorts[0]!.buildingIds).toEqual(['a0', 'a1', 'a2', 'a3', 'a4']);
+    expect(cohorts[1]!.buildingIds).toEqual(['b0', 'b1', 'b2', 'b3']);
+    expect(cohorts[0]!.cohort!.medianGapM).toBeCloseTo(1.2, 1);
+  });
+});

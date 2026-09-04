@@ -16,7 +16,7 @@ export const WIDTH_TYPE_REPRESENTATIVE_METERS: Record<string, number> = {
   '5': 22.0, // 19.5m 以上
 };
 
-export type WidthSource = 'uro:width' | 'uro:widthType' | 'lod1-geometry' | 'tran:function' | 'unknown';
+export type WidthSource = 'uro:width' | 'uro:widthType' | 'lod1-geometry' | 'tran:function' | 'building-gap' | 'unknown';
 
 /** tran:function(Road_function.xml)からの最後の退避。6 = 市区町村道は 4m 級と仮置き。[仮定] */
 export const FUNCTION_FALLBACK_METERS: Record<string, number> = { '6': 4.0 };
@@ -126,9 +126,29 @@ export function decideBundleVehicle(
   buildings: readonly Building[],
   roads: readonly Road[],
   rt: RateTable,
-): VehicleDecision & { narrowestRoadId?: string; roadWidth?: number } {
+  /** 道路データが無いときの退避に使う周辺建物(向かい合う外壁間から幅を推定)。 */
+  neighborhood?: readonly Building[],
+): VehicleDecision & { narrowestRoadId?: string; roadWidth?: number; widthSource?: WidthSource } {
   let narrowest: NearestRoad | undefined;
   let maxSlope: number | undefined;
+  if (roads.length === 0 && neighborhood && neighborhood.length > 0) {
+    // 家ごとの推定はばらつくので、束では下位 1/4 の値(保守側だが外れ値には引きずられない)を採る
+    const widths: number[] = [];
+    for (const b of buildings) {
+      const e = estimateStreetWidthFromBuildings(b, neighborhood);
+      if (e) widths.push(e.width);
+      if (b.groundSlopePercent !== undefined && (maxSlope === undefined || b.groundSlopePercent > maxSlope)) maxSlope = b.groundSlopePercent;
+    }
+    widths.sort((a, b) => a - b);
+    const est = widths.length > 0 ? widths[Math.floor((widths.length - 1) * 0.25)] : undefined;
+    const d = classifyVehicle(est, maxSlope, rt, 'building-gap');
+    return {
+      ...d,
+      reason: est !== undefined ? `${d.reason}(道路データなし。向かいの建物との間隔からの推定 ${widths.length} 軒の下位 1/4・幅員未確認)` : d.reason,
+      roadWidth: est,
+      widthSource: est !== undefined ? 'building-gap' : 'unknown',
+    };
+  }
   for (const b of buildings) {
     let nr = nearestRoad(b.centroid, roads);
     // 区間属性が無い道路では、家の前の弦長(局所幅員)で置き換える
@@ -146,7 +166,7 @@ export function decideBundleVehicle(
     }
   }
   const decision = classifyVehicle(narrowest?.width, maxSlope, rt, narrowest?.widthSource);
-  return { ...decision, narrowestRoadId: narrowest?.road.id, roadWidth: narrowest?.width };
+  return { ...decision, narrowestRoadId: narrowest?.road.id, roadWidth: narrowest?.width, widthSource: narrowest?.widthSource };
 }
 
 /**
@@ -213,4 +233,68 @@ export function localRoadWidth(
 function round(v: number, digits: number): number {
   const f = 10 ** digits;
   return Math.round(v * f) / f;
+}
+
+
+/**
+ * 道路データ(tran)が無い都市の退避: 向かい合う建物の外壁間の距離から街路の幅を推定する。
+ * 各辺の中点から外向きに光線を飛ばし、最初にぶつかる他の建物までの距離(クリアランス)を測る。
+ * 家は通常 1 面だけが街路に面し、残りは隣家・裏の家との狭い隙間なので、
+ * **最も開けた面**を街路とみなす(角地は 2 面が開けるが最大値を採るので同じ)。
+ * クリアランスが minCorridor 未満、または maxCorridor まで何にも当たらない(空地・データの端)面は使わない。
+ * 幅員 ≈ クリアランス − 2 × 後退距離。[仮定] 後退 1.0 m(建築基準法の道路後退・敷際の余白の概算)。
+ */
+export function estimateStreetWidthFromBuildings(
+  building: Building,
+  others: readonly Building[],
+  options: { minCorridor?: number; maxCorridor?: number; setbackMeters?: number; step?: number } = {},
+): { width: number; corridor: number; facingId: string | null } | undefined {
+  const minCorridor = options.minCorridor ?? 5.5;
+  const maxCorridor = options.maxCorridor ?? 30;
+  const setback = options.setbackMeters ?? 1.0;
+  const step = options.step ?? 0.5;
+  const { toXY } = localProjector(building.centroid);
+  const ring = building.footprint.map(toXY);
+  const c = toXY(building.centroid);
+  const reach = maxCorridor + 30;
+  const candidates: Array<{ id: string; xy: XY[] }> = [];
+  for (const o of others) {
+    if (o.id === building.id) continue;
+    const k = Math.cos((building.centroid[1] * Math.PI) / 180) * 111_320;
+    if (Math.abs((o.centroid[0] - building.centroid[0]) * k) > reach || Math.abs((o.centroid[1] - building.centroid[1]) * 111_320) > reach) continue;
+    candidates.push({ id: o.id, xy: o.footprint.map(toXY) });
+  }
+  let best: { width: number; corridor: number; facingId: string | null } | undefined;
+  for (let i = 0; i < ring.length - 1; i++) {
+    const a = ring[i]!;
+    const b = ring[i + 1]!;
+    const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    if (len < 3) continue; // 短い辺(出隅)は街路に面していないことが多い
+    const mx = (a[0] + b[0]) / 2;
+    const my = (a[1] + b[1]) / 2;
+    let nx = -(b[1] - a[1]) / len;
+    let ny = (b[0] - a[0]) / len;
+    if ((mx - c[0]) * nx + (my - c[1]) * ny < 0) {
+      nx = -nx;
+      ny = -ny;
+    }
+    let corridor: number | undefined;
+    let facing: string | null = null;
+    for (let t = step; t <= maxCorridor; t += step) {
+      const p: XY = [mx + nx * t, my + ny * t];
+      const hit = candidates.find((o) => pointInRing(p, o.xy));
+      if (hit) {
+        corridor = t;
+        facing = hit.id;
+        break;
+      }
+    }
+    // 何にも当たらない面(公園・空地・データの端)は街路とは言えないので使わない
+    if (corridor === undefined || corridor < minCorridor) continue;
+    if (!best || corridor > best.corridor) {
+      const width = Math.max(1.5, corridor - 2 * setback);
+      best = { width: Math.round(width * 10) / 10, corridor: Math.round(corridor * 10) / 10, facingId: facing };
+    }
+  }
+  return best;
 }

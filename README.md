@@ -64,6 +64,22 @@ node scripts/record-demo.mjs demo-recording   # playwright は npm i -g playwrig
 
 MapLibre は `preserveDrawingBuffer: true` で初期化しているので、ヘッドレス撮影でも 3D キャンバスが写る。
 
+## 実データ(新座市 2020 年度・建物 10,110 棟)で動かす
+
+`data/real/niiza.json` は PLATEAU の実 CityGML(新座市の 3 次メッシュ 3 枚)を取り込んだもの(出典と制約は [data/real/README.md](data/real/README.md))。2020 年度版のため築年・道路が無く、API は次の退避で動く。
+
+| 無いもの | 退避 | 画面の表示 |
+|---|---|---|
+| `bldg:yearOfConstruction` | **形状コホート**: 底面積と高さが揃った戸建てが 4 m 以内で連なる列を「同時期分譲の疑い」としてまとめる(`detectGeometryCohorts`) | 「同時期分譲の疑い(形状から推定)」 |
+| `tran:Road` | **向かいの建物との間隔**: 各面から外向きに光線を飛ばし、最も開けた面のクリアランス − 後退 2 m を幅員とする。束では家ごとの推定の下位 1/4 を採る(`estimateStreetWidthFromBuildings`) | 「幅員未確認」付きの車格 |
+| 住所 | 地図の家をクリック、または建物 ID(`uuid_…`)で検索 | — |
+
+```bash
+DATA_FILE=$PWD/data/real/niiza.json pnpm --filter @ashiba/api dev
+```
+
+築年充足率が 30% 以上の都市では自動的に築年クラスタに切り替わる。
+
 ## 環境変数(API)
 
 | 変数 | 既定 | 意味 |

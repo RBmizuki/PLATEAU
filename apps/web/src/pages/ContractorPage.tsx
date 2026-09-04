@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { LeadSpec, YearCluster } from '@ashiba/engine';
-import { api, yen, yenFull, type BundleSummary, type FeatureCollection } from '../lib/api';
+import { api, clusterLabel, yen, yenFull, type BundleSummary, type FeatureCollection } from '../lib/api';
 import { CityMap } from '../components/CityMap';
 
 const statusLabel: Record<BundleSummary['status'], string> = {
@@ -19,6 +19,7 @@ export function ContractorPage() {
   const [bundles, setBundles] = useState<BundleSummary[]>([]);
   const [focus, setFocus] = useState<YearCluster | null>(null);
   const [lead, setLead] = useState<{ bundle: BundleSummary; lead: LeadSpec | null } | null>(null);
+  const [attribution, setAttribution] = useState<string | undefined>();
 
   const reload = useCallback(async () => {
     const [c, b] = await Promise.all([api.clusters(), api.bundles()]);
@@ -27,7 +28,7 @@ export function ContractorPage() {
   }, []);
 
   useEffect(() => {
-    api.dataset().then((d) => setBounds(d.bounds)).catch(() => undefined);
+    api.dataset().then((d) => { setBounds(d.bounds); setAttribution(typeof d.meta['attribution'] === 'string' ? (d.meta['attribution'] as string) : undefined); }).catch(() => undefined);
     api.buildingsGeoJSON().then(setBuildings).catch(console.error);
     api.roadsGeoJSON().then(setRoads).catch(console.error);
     void reload();
@@ -74,7 +75,7 @@ export function ContractorPage() {
               <li key={c.id}>
                 <div role="button" tabIndex={0} className="cluster-card" onClick={() => { setFocus(c); setLead(null); }} onKeyDown={(e) => e.key === 'Enter' && (setFocus(c), setLead(null))} style={c.id === focus?.id ? { borderColor: 'var(--accent)' } : undefined}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-                    <span><strong>{c.id}</strong> <span className="pill">{c.yearMin}〜{c.yearMax}</span></span>
+                    <span><strong>{c.id}</strong> <span className="pill">{c.basis === 'geometry' ? '形状から推定' : `${c.yearMin}〜${c.yearMax}`}</span></span>
                     <span>{reg}/{c.candidateCount} 軒</span>
                   </div>
                   <div className="density"><div style={{ width: `${density}%` }} /></div>
@@ -123,7 +124,7 @@ export function ContractorPage() {
         )}
       </aside>
       <main className="stage">
-        <CityMap buildings={buildings} roads={roads} bounds={bounds} candidateIds={focus?.buildingIds ?? []} registeredIds={registeredIds} flyTo={focus?.centroid ?? null} routeLine={routeLine} height="calc(100vh - 62px)" />
+        <CityMap buildings={buildings} roads={roads} bounds={bounds} candidateIds={focus?.buildingIds ?? []} registeredIds={registeredIds} flyTo={focus?.centroid ?? null} routeLine={routeLine} attribution={attribution} height="calc(100vh - 62px)" />
       </main>
     </div>
   );
