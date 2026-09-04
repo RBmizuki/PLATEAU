@@ -23,6 +23,7 @@ export interface DatasetInfo {
   meta: Record<string, unknown>;
   clusterBasis?: 'year' | 'geometry';
   yearCoverage?: number;
+  hasAddresses?: boolean;
   counts: { buildings: number; roads: number; clusters: number };
 }
 

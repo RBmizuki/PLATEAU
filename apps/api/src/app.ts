@@ -7,6 +7,7 @@ import { gsiGeocode, matchAddress, nearestBuilding } from './geocode.js';
 import { BundleStore } from './store.js';
 import { bundleRoutes } from './routes/bundles.js';
 import { demoRoutes } from './routes/demo.js';
+import { tileRoutes } from './routes/tiles.js';
 import { createQuoteService } from './quote.js';
 import { memberOf } from '@ashiba/engine';
 
@@ -34,7 +35,7 @@ export function createApp(options: AppOptions = {}): Hono {
     c.json({ ok: true, source: ds.source, buildings: ds.buildings.length, roads: ds.roads.length, clusters: ds.clusters.length }),
   );
 
-  app.get('/api/dataset', (c) => c.json({ source: ds.source, bounds: ds.bounds, meta: ds.meta, clusterBasis: ds.clusterBasis, yearCoverage: ds.yearCoverage, counts: { buildings: ds.buildings.length, roads: ds.roads.length, clusters: ds.clusters.length } }));
+  app.get('/api/dataset', (c) => c.json({ source: ds.source, bounds: ds.bounds, meta: ds.meta, clusterBasis: ds.clusterBasis, yearCoverage: ds.yearCoverage, hasAddresses: ds.hasAddresses, counts: { buildings: ds.buildings.length, roads: ds.roads.length, clusters: ds.clusters.length } }));
 
   app.get('/api/buildings.geojson', (c) => c.json(ds.buildingsGeoJSON));
   app.get('/api/roads.geojson', (c) => c.json(ds.roadsGeoJSON));
@@ -115,6 +116,7 @@ export function createApp(options: AppOptions = {}): Hono {
 
   app.route('/api/bundles', bundleRoutes({ ds, store, defaultThreshold: threshold, now, quote: (b) => quotes.bundleQuote(b), lead: (b) => quotes.lead(b) }));
   if (demo) app.route('/api/demo', demoRoutes(ds, store, now, threshold));
+  app.route('/api/tiles', tileRoutes());
 
   return app;
 }

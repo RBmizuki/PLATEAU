@@ -248,7 +248,8 @@ function parseBuilding(node: Node, opts: ParseOptions, warnings: string[]): Buil
     return normalizeBuilding({
       id,
       footprint: fp.ring,
-      yearOfConstruction: year !== undefined && year > 0 ? year : undefined,
+      // 0001 / 0000 などの番兵値(未調査)は未知として扱う
+      yearOfConstruction: year !== undefined && year >= 1800 ? year : undefined,
       storeysAboveGround: storeys,
       measuredHeight: height,
       usage,
@@ -309,7 +310,7 @@ export interface CoverageStats {
 /** 都市ごとの築年・幅員の充足率(docs/plateau-data.md §2.4 / §4.4)。 */
 export function coverageStats(buildings: readonly Building[], roads: readonly Road[], residentialCodes: readonly string[] = ['411', '412', '413', '414']): CoverageStats {
   const resid = buildings.filter((b) => !b.usage || residentialCodes.includes(b.usage));
-  const withYear = resid.filter((b) => b.yearOfConstruction !== undefined && b.yearOfConstruction > 1);
+  const withYear = resid.filter((b) => b.yearOfConstruction !== undefined && b.yearOfConstruction >= 1800);
   const fit = withYear.filter((b) => b.yearOfConstruction! >= 2010 && b.yearOfConstruction! <= 2016);
   const src: CoverageStats['roadWidthSource'] = { 'uro:width': 0, 'uro:widthType': 0, 'lod1-geometry': 0, 'tran:function': 0, unknown: 0 };
   for (const r of roads) {

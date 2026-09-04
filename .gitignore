@@ -6,3 +6,4 @@ apps/api/data/*.json
 !apps/api/data/.gitkeep
 coverage/
 .vite/
+apps/api/data/tiles/

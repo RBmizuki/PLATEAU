@@ -11,6 +11,11 @@ export interface ClusterOptions {
   /** 住宅用途コードのみを対象にする場合に指定(未指定なら全件)。 */
   residentialUsageCodes?: readonly string[];
   /**
+   * 戸建て相当に絞る(共同住宅・大型建物を束の種から外す)。
+   * 底面積 [m²] の範囲と高さ [m] の上限。未指定なら絞らない。
+   */
+  houseFilter?: { areaRange?: [number, number]; maxHeightMeters?: number };
+  /**
    * 街区の境界として使う道路(PLATEAU tran:Road の LOD1 面)。
    * 2 棟の重心を結ぶ線分が道路面の辺を横切る場合は連結しない = 道路で区切られた区画を街区とする。
    */
@@ -89,6 +94,11 @@ export function detectYearClusters(
   const linkGap = options.linkGapMeters ?? 30;
   const minSize = options.minSize ?? 3;
   const usageSet = options.residentialUsageCodes ? new Set(options.residentialUsageCodes) : null;
+  const hf = options.houseFilter;
+  const [hfMin, hfMax] = hf?.areaRange ?? [0, Infinity];
+  const hfHeight = hf?.maxHeightMeters ?? Infinity;
+  const houseLike = (b: Building) =>
+    !hf || (b.footprintArea >= hfMin && b.footprintArea <= hfMax && (b.measuredHeight ?? (b.storeysAboveGround ?? 2) * 3) <= hfHeight);
 
   const projector = buildings.length > 0 ? localProjector(buildings[0]!.centroid) : undefined;
   const barriers = options.roadBarriers && projector ? buildBarriers(options.roadBarriers, projector.toXY) : [];
@@ -100,6 +110,7 @@ export function detectYearClusters(
     index.set(b.id, i);
     if (b.yearOfConstruction === undefined) return;
     if (usageSet && (!b.usage || !usageSet.has(b.usage))) return;
+    if (!houseLike(b)) return;
     eligible.push(i);
   });
   const eligibleSet = new Set(eligible);

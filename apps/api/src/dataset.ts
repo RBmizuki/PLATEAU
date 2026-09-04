@@ -26,6 +26,7 @@ export interface Dataset {
   /** 'year' = 築年クラスタ / 'geometry' = 形状コホート(築年充足率 30% 未満の都市の退避)。 */
   clusterBasis: 'year' | 'geometry';
   yearCoverage: number;
+  hasAddresses: boolean;
   clusterById: Map<string, YearCluster>;
   clusterOfBuilding: Map<string, string>;
   buildingsGeoJSON: FeatureCollection;
@@ -47,13 +48,21 @@ export function loadDataset(file = process.env['DATA_FILE'] ?? DEFAULT_DATA_FILE
   const roads = raw.roads ?? [];
   // 連棟移設の判定用(外壁間 12m まで)と、街区連結用(背中合わせ・道路越しを含む 35m まで)は別のグラフ
   const adjacency = buildAdjacencyGraph(buildings, { maxGapMeters: 12 });
-  const withYear = buildings.filter((b) => b.yearOfConstruction !== undefined && b.yearOfConstruction > 1).length;
+  const withYear = buildings.filter((b) => b.yearOfConstruction !== undefined && b.yearOfConstruction >= 1800).length;
   const yearCoverage = buildings.length > 0 ? withYear / buildings.length : 0;
   // 築年が 30% 以上入っていれば築年クラスタ、無ければ形状コホート(docs/plateau-data.md §4.4 の方針)
   const clusterBasis: 'year' | 'geometry' = yearCoverage >= 0.3 ? 'year' : 'geometry';
   const clusters =
     clusterBasis === 'year'
-      ? detectYearClusters(buildings, buildAdjacencyGraph(buildings, { maxGapMeters: 35, maxNeighbors: 24 }), { yearWindow: 2, linkGapMeters: 35, minSize: 3, roadBarriers: roads })
+      ? detectYearClusters(buildings, buildAdjacencyGraph(buildings, { maxGapMeters: 35, maxNeighbors: 24 }), {
+          yearWindow: 2,
+          linkGapMeters: 35,
+          minSize: 3,
+          roadBarriers: roads,
+          // 用途があれば専用住宅・店舗併用住宅(411/413)に、無ければ規模と高さで戸建て相当に絞る
+          residentialUsageCodes: buildings.some((b) => b.usage) ? ['411', '413'] : undefined,
+          houseFilter: { areaRange: [35, 220], maxHeightMeters: 13 },
+        })
       : detectGeometryCohorts(buildings, adjacency, { minSize: 4 });
   const clusterOfBuilding = new Map<string, string>();
   for (const c of clusters) for (const id of c.buildingIds) clusterOfBuilding.set(id, c.id);
@@ -78,6 +87,7 @@ export function loadDataset(file = process.env['DATA_FILE'] ?? DEFAULT_DATA_FILE
     clusters,
     clusterBasis,
     yearCoverage,
+    hasAddresses: buildings.some((b) => b.address),
     clusterById: new Map(clusters.map((c) => [c.id, c])),
     clusterOfBuilding,
     buildingsGeoJSON: buildingsToGeoJSON(buildings),

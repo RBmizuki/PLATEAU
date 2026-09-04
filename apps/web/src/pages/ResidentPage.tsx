@@ -24,8 +24,8 @@ export function ResidentPage() {
     api.dataset().then((d) => {
       setBounds(d.bounds);
       setAttribution(typeof d.meta['attribution'] === 'string' ? (d.meta['attribution'] as string) : undefined);
-      if (d.clusterBasis === 'geometry') setPlaceholder('住所が無いデータです。地図の家をクリックしてください');
-      else setQuery('千葉市美浜区真砂三丁目A-3');
+      if (d.hasAddresses === false) setPlaceholder('このデータに住所は入っていません。地図の家をクリックしてください');
+      else if (String(d.source).includes('masago')) setQuery('千葉市美浜区真砂三丁目A-3');
     }).catch(() => undefined);
     api.buildingsGeoJSON().then(setBuildings).catch(console.error);
     api.roadsGeoJSON().then(setRoads).catch(console.error);

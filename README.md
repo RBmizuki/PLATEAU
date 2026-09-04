@@ -36,7 +36,7 @@ pnpm typecheck
 pnpm dev           # API (http://localhost:8787) と Web (http://localhost:5173) を同時起動
 ```
 
-Web は `/api` を API にプロキシする。地図の下地は外部タイルに依存しない(`VITE_BASEMAP_STYLE` に地理院ベクトルタイル等の style.json を渡せば差し替え可)。
+Web は `/api` を API にプロキシする。地図の下地は既定では無地(外部タイル不要)。`VITE_BASEMAP=gsi-photo` で地理院の全国最新写真、`gsi-pale` で淡色地図を敷く(API の `/api/tiles/...` が地理院タイルを中継・キャッシュする。`VITE_GSI_DIRECT=1` なら直接取得)。`VITE_BASEMAP_STYLE` に style.json の URL を渡せば任意の下地に差し替えられる。
 
 ## 実 PLATEAU データを使う
 
@@ -64,7 +64,20 @@ node scripts/record-demo.mjs demo-recording   # playwright は npm i -g playwrig
 
 MapLibre は `preserveDrawingBuffer: true` で初期化しているので、ヘッドレス撮影でも 3D キャンバスが写る。
 
-## 実データ(新座市 2020 年度・建物 10,110 棟)で動かす
+## 実データで動かす
+
+同梱の実データは 2 つ(出典と制約は [data/real/README.md](data/real/README.md))。
+
+| データ | 年度 | 棟数 | 築年 | 道路 | 束の種 | 幅員 |
+|---|---|---|---|---|---|---|
+| `data/real/toda.json` 戸田市 | 2022(v4) | 28,871 | 住宅の 74.6% | 9,293 本(幅員属性なし) | **築年クラスタ**(2012〜13 年分譲の 32 軒など 132 街区) | 道路面の弦長から推定 |
+| `data/real/niiza.json` 新座市 | 2020(v1) | 10,110 | なし | なし | 形状コホート | 向かいの建物との間隔から推定 |
+
+```bash
+DATA_FILE=$PWD/data/real/toda.json VITE_BASEMAP=gsi-photo pnpm dev
+```
+
+### 新座市 2020 年度(建物 10,110 棟)の退避
 
 `data/real/niiza.json` は PLATEAU の実 CityGML(新座市の 3 次メッシュ 3 枚)を取り込んだもの(出典と制約は [data/real/README.md](data/real/README.md))。2020 年度版のため築年・道路が無く、API は次の退避で動く。
 

@@ -63,12 +63,36 @@ export interface NearestRoad {
 }
 
 /** 点に最も近い道路(LOD1 面の辺までの距離)。 */
+/** 粗い前絞り: 道路面のいずれかの頂点が point から reach [m] 以内にあるもの。 */
+function roadsNear(point: LngLat, roads: readonly Road[], reachMeters: number): Road[] {
+  const k = Math.cos((point[1] * Math.PI) / 180) * 111_320;
+  const dLon = reachMeters / k;
+  const dLat = reachMeters / 111_320;
+  const out: Road[] = [];
+  for (const road of roads) {
+    let near = false;
+    for (const ring of road.polygons) {
+      for (let i = 0; i < ring.length && !near; i += 2) {
+        const [lon, lat] = ring[i]!;
+        if (Math.abs(lon - point[0]) <= dLon && Math.abs(lat - point[1]) <= dLat) near = true;
+      }
+      if (near) break;
+    }
+    if (near) out.push(road);
+  }
+  return out;
+}
+
 export function nearestRoad(point: LngLat, roads: readonly Road[]): NearestRoad | undefined {
   if (roads.length === 0) return undefined;
   const { toXY } = localProjector(point);
   const p = toXY(point);
   let best: NearestRoad | undefined;
-  for (const road of roads) {
+  // 9 千本規模の都市でも 1 建物あたり数十本に絞る(近くに無ければ全件に戻す)
+  let pool = roadsNear(point, roads, 80);
+  if (pool.length === 0) pool = roadsNear(point, roads, 400);
+  if (pool.length === 0) pool = [...roads];
+  for (const road of pool) {
     let d = Infinity;
     for (const ring of road.polygons) {
       const xy = ring.map(toXY);
@@ -186,7 +210,7 @@ export function localRoadWidth(
   const { toXY } = localProjector(building.centroid);
   const ring = building.footprint.map(toXY);
   const c = toXY(building.centroid);
-  const rings = roads.flatMap((r) => r.polygons.map((p) => ({ id: r.id, xy: p.map(toXY) })));
+  const rings = roadsNear(building.centroid, roads, maxReach + maxChord + 30).flatMap((r) => r.polygons.map((p) => ({ id: r.id, xy: p.map(toXY) })));
   if (rings.length === 0 || ring.length < 4) return undefined;
   let best: { width: number; roadId: string; distance: number } | undefined;
   for (let i = 0; i < ring.length - 1; i++) {

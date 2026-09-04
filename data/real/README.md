@@ -17,3 +17,15 @@ DATA_FILE=$PWD/data/real/niiza.json pnpm --filter @ashiba/api dev
 ```
 
 住所検索は使えないので、地図の家をクリックするか、建物 ID(`uuid_...`)を入力して選ぶ。
+
+## toda.json
+
+- 出典: 3D都市モデル(Project PLATEAU)戸田市(2022年度)・国土交通省。G空間情報センターの `plateau-11224-toda-shi-2022` の CityGML(v4、`11224_toda-shi_city_2022_citygml_4_op.zip`、483MB)。
+- 取り込み: `udx/bldg`(35 ファイル)+ `udx/tran`(24 ファイル)+ `codelists/`。DEM(`udx/dem`、1 ファイル 600MB × 17)はメモリに載らないため未適用(要ストリーミング実装)。所要 19 秒。
+- 内容: 建物 28,871 棟、道路 9,293 本。住宅棟(411〜414)の築年充足率 74.6%(全棟では 63.7%。番兵値「0001」などは未知扱い)。2010〜2016 年築 1,158 棟。階数・用途 100%。道路は `tran:function` のみで `uro:width` / `widthType` は無い → 幅員は道路面の弦長から推定(「幅員未確認」表示)。
+- 築年クラスタ: 1,840(用途 411/413 かつ底面 35〜220 m²・高さ 13 m 以下に限定)。2010〜2016 年の街区は 132、最大 32 軒(2012〜2013 年)。
+- 住所は入っていない。地図の家をクリックするか建物 ID(`bldg_…`)で検索する。
+
+```bash
+DATA_FILE=$PWD/data/real/toda.json VITE_BASEMAP=gsi-photo pnpm dev
+```

@@ -23,14 +23,40 @@ export interface CityMapProps {
 }
 
 /**
- * 外部タイルに依存しない自前スタイル。VITE_BASEMAP_STYLE に地理院ベクトルタイル等の
- * style.json を渡せば下地を差し替えられる(オフライン環境では空の背景で動く)。
+ * 下地。既定は外部タイルに依存しない無地(オフラインで動く)。
+ * VITE_BASEMAP=gsi-photo で地理院の全国最新写真(シームレス)、gsi-pale で淡色地図を敷く。
+ * VITE_BASEMAP_STYLE に style.json の URL を渡せば任意の下地に差し替えられる。
  */
 const BLANK_STYLE: StyleSpecification = {
   version: 8,
   sources: {},
   layers: [{ id: 'bg', type: 'background', paint: { 'background-color': '#e9eef2' } }],
 };
+
+function gsiStyle(kind: 'photo' | 'pale'): StyleSpecification {
+  // 既定は API の中継(同一オリジン・キャッシュあり)。VITE_GSI_DIRECT=1 なら地理院に直接取りに行く。
+  const direct = import.meta.env['VITE_GSI_DIRECT'] === '1';
+  const url = direct
+    ? kind === 'photo' ? 'https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/{z}/{x}/{y}.jpg' : 'https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png'
+    : `${window.location.origin}/api/tiles/${kind}/{z}/{x}/{y}`;
+  return {
+    version: 8,
+    sources: { gsi: { type: 'raster', tiles: [url], tileSize: 256, maxzoom: 18, attribution: '地図・写真: 国土地理院' } },
+    layers: [
+      { id: 'bg', type: 'background', paint: { 'background-color': '#e9eef2' } },
+      { id: 'gsi', type: 'raster', source: 'gsi', paint: { 'raster-opacity': kind === 'photo' ? 0.85 : 1, 'raster-saturation': kind === 'photo' ? -0.35 : 0, 'raster-brightness-max': kind === 'photo' ? 0.9 : 1 } },
+    ],
+  };
+}
+
+function resolveStyle(): string | StyleSpecification {
+  const explicit = import.meta.env['VITE_BASEMAP_STYLE'] as string | undefined;
+  if (explicit) return explicit;
+  const kind = (import.meta.env['VITE_BASEMAP'] as string | undefined) ?? 'blank';
+  if (kind === 'gsi-photo') return gsiStyle('photo');
+  if (kind === 'gsi-pale') return gsiStyle('pale');
+  return BLANK_STYLE;
+}
 
 const BUILDING_COLOR = [
   'case',
@@ -49,7 +75,7 @@ export function CityMap(props: CityMapProps) {
   const container = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MLMap | null>(null);
   const stateIds = useRef<Set<string>>(new Set());
-  /** スタイルの load 後に true。isStyleLoaded() は GeoJSON 処理中に false を返すので使わない。 */
+  /** スタイルの style.load 後に true。isStyleLoaded() は GeoJSON 処理中に false を返すので使わない。 */
   const [ready, setReady] = useState(false);
   const fitted = useRef(false);
   const { buildings, roads, bounds, selectedId, candidateIds, registeredIds, onSelect, flyTo, routeLine, attribution } = props;
@@ -59,7 +85,7 @@ export function CityMap(props: CityMapProps) {
 
   useEffect(() => {
     if (!container.current || mapRef.current) return;
-    const style = (import.meta.env['VITE_BASEMAP_STYLE'] as string | undefined) ?? BLANK_STYLE;
+    const style = resolveStyle();
     const map = new maplibregl.Map({
       container: container.current,
       style,
@@ -79,7 +105,8 @@ export function CityMap(props: CityMapProps) {
     mapRef.current = map;
     (window as unknown as { __ashibaMap?: MLMap }).__ashibaMap = map;
     map.on('error', (e) => console.error('maplibre error', e.error?.message ?? e));
-    map.on('load', () => setReady(true));
+    // style.load はスタイル JSON が読めた時点で発火する(load は下地タイルの完了まで待つので、タイルが遅い環境で建物が出なくなる)
+    map.on('style.load', () => setReady(true));
     return () => {
       map.remove();
       mapRef.current = null;
@@ -100,7 +127,7 @@ export function CityMap(props: CityMapProps) {
             id: 'roads-fill',
             type: 'fill',
             source: 'roads',
-            paint: { 'fill-color': ['interpolate', ['linear'], ['coalesce', ['get', 'width'], 4], 3, '#f3d6d6', 4.5, '#dfe6ec', 6, '#cfd8e0'], 'fill-opacity': 0.9 },
+            paint: { 'fill-color': ['interpolate', ['linear'], ['coalesce', ['get', 'width'], 4], 3, '#f3d6d6', 4.5, '#dfe6ec', 6, '#cfd8e0'], 'fill-opacity': (import.meta.env['VITE_BASEMAP'] as string | undefined)?.startsWith('gsi') ? 0.35 : 0.9 },
           });
           map.addLayer({ id: 'roads-line', type: 'line', source: 'roads', paint: { 'line-color': '#9aa8b5', 'line-width': 0.8 } });
         }
